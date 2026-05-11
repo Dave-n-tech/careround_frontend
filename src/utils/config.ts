@@ -1,0 +1,5 @@
+export const appConfig = {
+  hospitalName: import.meta.env.VITE_HOSPITAL_NAME || "CareRound Hospital",
+  hospitalShortName: import.meta.env.VITE_HOSPITAL_SHORT_NAME || "CareRound",
+  demoMode: import.meta.env.VITE_DEMO_MODE === "true"
+};

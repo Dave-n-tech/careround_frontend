@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>CareRound — Developer Spec</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body{font-family:'IBM Plex Sans',system-ui,sans-serif;color:#0f172a;background:#f8fafc;}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace;}
+  h1{font-size:32px;font-weight:600;letter-spacing:-0.02em;margin-bottom:6px;}
+  h2{font-size:22px;font-weight:600;margin:42px 0 12px;letter-spacing:-0.01em;border-bottom:1px solid #e2e8f0;padding-bottom:8px;}
+  h3{font-size:16px;font-weight:600;margin:24px 0 8px;color:#0b5cab;}
+  p,li{font-size:14px;line-height:1.65;color:#1e293b;}
+  ul{padding-left:22px;list-style:disc;margin:8px 0;}
+  ol{padding-left:22px;list-style:decimal;margin:8px 0;}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;}
+  th{text-align:left;background:#f1f5f9;padding:8px 12px;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#475569;border-bottom:1px solid #e2e8f0;}
+  td{padding:8px 12px;border-bottom:1px solid #e2e8f0;vertical-align:top;}
+  td.mono{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#0b5cab;}
+  code{font-family:'IBM Plex Mono',monospace;background:#f1f5f9;padding:1px 5px;border-radius:3px;font-size:12.5px;color:#be185d;}
+  pre{background:#0f172a;color:#e2e8f0;padding:14px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.55;overflow-x:auto;margin:10px 0;}
+  .panel{background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:18px 24px;margin:14px 0;}
+  .pill{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;letter-spacing:0.04em;}
+  .pill-get{background:#dbeafe;color:#1e40af;}
+  .pill-post{background:#dcfce7;color:#166534;}
+  .pill-put{background:#fef3c7;color:#854d0e;}
+  .pill-del{background:#fee2e2;color:#991b1b;}
+  .toc{position:sticky;top:24px;}
+  .toc a{display:block;padding:3px 0;font-size:12.5px;color:#475569;text-decoration:none;}
+  .toc a:hover{color:#0b5cab;}
+  .toc a.l2{padding-left:14px;}
+</style>
+</head>
+<body>
+<div class="max-w-[1280px] mx-auto p-10 grid grid-cols-[220px_1fr] gap-10">
+  <aside class="toc">
+    <div class="font-semibold mb-3 text-sm">CareRound · Spec</div>
+    <a href="#overview">Overview</a>
+    <a href="#structure">1. Project structure</a>
+    <a href="#auth">2. Auth architecture</a>
+    <a href="#routing">3. Routing table</a>
+    <a href="#stores">4. State (Zustand stores)</a>
+    <a href="#services">5. API services</a>
+    <a href="#components">6. Shared components</a>
+    <a href="#validation">7. Form validation</a>
+    <a href="#errors">8. Error handling</a>
+    <a href="#polling">9. Polling</a>
+    <a href="#responsive">10. Responsive</a>
+    <a href="#a11y">11. Accessibility</a>
+    <a href="#decisions">12. Design decisions</a>
+  </aside>
+
+  <main>
+    <header id="overview" class="mb-6">
+      <h1>CareRound — Frontend Spec</h1>
+      <p class="text-slate-500 text-sm">v1.0 · 6 May 2026 · React 18 + Vite · Tailwind · Zustand · React Hook Form · Recharts</p>
+      <p class="mt-3">Companion to the interactive prototype at <a href="index.html" class="text-blue-700 underline">index.html</a>. The prototype is the visual source of truth; this document specifies what the developer must build behind it.</p>
+    </header>
+
+    <h2 id="structure">1. Project structure</h2>
+    <pre>src/
+├── main.jsx                     # entry, mounts &lt;App/&gt;, sets up Router
+├── App.jsx                      # Routes definition (BrowserRouter)
+├── api/
+│   ├── client.js                # axios instance, interceptors, token refresh
+│   ├── authService.js
+│   ├── hospitalService.js
+│   ├── departmentService.js
+│   ├── wardService.js
+│   ├── userService.js
+│   ├── medicalTeamService.js
+│   ├── patientService.js
+│   ├── vitalsService.js
+│   ├── onCallService.js
+│   ├── shiftService.js
+│   ├── handoverService.js
+│   ├── roundService.js
+│   ├── taskService.js
+│   ├── clinicalNoteService.js
+│   ├── escalationService.js
+│   └── reportService.js
+├── stores/
+│   ├── authStore.js
+│   ├── notificationStore.js
+│   └── roundConductorStore.js
+├── hooks/
+│   ├── usePolling.js
+│   ├── useDebouncedSearch.js
+│   └── useNEWS.js               # client-side NEWS2 calc (display only)
+├── components/                  # shared, role-agnostic
+│   ├── layout/  (Sidebar, TopBar, PageHeader, AppShell)
+│   ├── badges/  (AcuityBadge, NEWSBadge, StatusChip, PriorityChip, RoleBadge)
+│   ├── cards/   (PatientRow, TaskCard, EscalationCard, StatCard)
+│   ├── form/    (Field, Modal, ConfirmModal, Toast, Toggle)
+│   ├── data/    (DataTable, EmptyState, LoadingSpinner, SkeletonLoader)
+│   └── charts/  (NEWSSparkline, BarChart, Donut, VitalsChart)
+├── routes/
+│   ├── PrivateRoute.jsx         # redirects to /login if not authed
+│   ├── RoleRoute.jsx            # renders &lt;Forbidden/&gt; if role mismatch
+│   └── Forbidden.jsx
+├── pages/
+│   ├── login/LoginPage.jsx
+│   ├── admin/   (DashboardPage, DepartmentsPage, WardsPage, UsersPage,
+│   │             ShiftSchedulesPage, OnCallPage, TeamAssignmentPage, HospitalSettingsPage)
+│   ├── consultant/ (PatientListPage, RoundConductorPage, MyTeamPage, EscalationInboxPage)
+│   ├── registrar/  (PatientListPage, RoundConductorPage, AdmissionFormPage, EscalationQueuePage)
+│   ├── juniorDoctor/ (TaskListPage, PatientListPage, RoundParticipatePage, HandoverNotesPage)
+│   ├── nurse/ (PatientListPage, VitalsFormPage, TaskListPage, EscalationCreatePage, HandoverNotesPage)
+│   ├── supervisor/ (DashboardPage, ShiftAssignmentPage, HandoverPage, RoundHistoryPage, ReportsPage)
+│   └── shared/PatientDetailPage.jsx
+└── utils/
+    ├── formatDate.js, news2.js, errorMap.js, jwt.js</pre>
+
+    <h2 id="auth">2. Auth architecture</h2>
+
+    <h3>authStore (Zustand)</h3>
+    <pre>{
+  token: string | null,
+  refreshToken: string | null,
+  user: { userId, hospitalId, role, firstName, lastName, exp } | null,
+  setAuth({ token, refreshToken }),    // decodes token → sets user
+  clearAuth(),
+  isAuthenticated() → boolean
+}</pre>
+    <p>Tokens persisted to <code>localStorage</code> under keys <code>cr_token</code> and <code>cr_refresh</code>. <strong>Acknowledged tradeoff</strong>: localStorage is XSS-readable. Mitigated by strict CSP (no unsafe-inline scripts) and short token TTL (15 min access, 12h refresh).</p>
+
+    <h3>Axios instance (api/client.js)</h3>
+    <ul>
+      <li>Base URL: <code>import.meta.env.VITE_API_BASE_URL</code></li>
+      <li><strong>Request interceptor</strong>: reads token from authStore; injects <code>Authorization: Bearer &lt;token&gt;</code>.</li>
+      <li><strong>Response interceptor</strong>: on 401, attempts <code>POST /auth/refresh</code> with stored refreshToken once. On success, retries the original request. On failure, clears auth and redirects to <code>/login</code>.</li>
+      <li>A single in-flight refresh is queued so concurrent 401s don't trigger N refreshes (use a module-level promise).</li>
+    </ul>
+
+    <h3>Wrappers</h3>
+    <ul>
+      <li><code>&lt;PrivateRoute/&gt;</code>: if <code>!isAuthenticated()</code>, redirect to <code>/login</code> preserving <code>?from=</code>.</li>
+      <li><code>&lt;RoleRoute roles=[…]/&gt;</code>: if user.role not in allowed list, render <code>&lt;Forbidden/&gt;</code> (403 view), <strong>do not redirect</strong>.</li>
+    </ul>
+
+    <h3>Login flow</h3>
+    <ol>
+      <li>User submits email + password → <code>POST /auth/login</code>.</li>
+      <li>On 200, response carries <code>{ token, refreshToken }</code>. Call <code>authStore.setAuth(...)</code>.</li>
+      <li>Decode JWT (<code>utils/jwt.js</code>, no verification client-side) to populate <code>user</code>.</li>
+      <li>Redirect to role's default route (see §3).</li>
+      <li>On 401, show inline form error.</li>
+    </ol>
+
+    <h2 id="routing">3. Routing table</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Component</th><th>Roles</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">/login</td><td>LoginPage</td><td>—</td><td>Public; redirects to role-default if already authed</td></tr>
+        <tr><td class="mono">/forbidden</td><td>Forbidden</td><td>any</td><td>403 view</td></tr>
+        <tr><td class="mono">/admin/dashboard</td><td>admin/DashboardPage</td><td>ADMIN</td><td>Default for ADMIN</td></tr>
+        <tr><td class="mono">/admin/departments</td><td>admin/DepartmentsPage</td><td>ADMIN</td></tr>
+        <tr><td class="mono">/admin/wards</td><td>admin/WardsPage</td><td>ADMIN</td></tr>
+        <tr><td class="mono">/admin/users</td><td>admin/UsersPage</td><td>ADMIN</td></tr>
+        <tr><td class="mono">/admin/shift-schedules</td><td>admin/ShiftSchedulesPage</td><td>ADMIN</td></tr>
+        <tr><td class="mono">/admin/on-call</td><td>admin/OnCallPage</td><td>ADMIN</td></tr>
+        <tr><td class="mono">/admin/team-assignment</td><td>admin/TeamAssignmentPage</td><td>ADMIN</td></tr>
+        <tr><td class="mono">/admin/hospital</td><td>admin/HospitalSettingsPage</td><td>ADMIN</td></tr>
+        <tr><td class="mono">/patients</td><td>shared/PatientListPage</td><td>CONSULTANT, REGISTRAR, JUNIOR_DOCTOR, NURSE, WARD_SUPERVISOR</td><td>Default for clinical roles. List scope varies by role.</td></tr>
+        <tr><td class="mono">/patients/:id</td><td>shared/PatientDetailPage</td><td>clinical roles</td><td>Tabs: overview, vitals, notes, tasks, NoK</td></tr>
+        <tr><td class="mono">/round/new</td><td>consultant/RoundConductorPage</td><td>CONSULTANT, REGISTRAR</td><td>Wizard step 0</td></tr>
+        <tr><td class="mono">/round/:id</td><td>consultant/RoundConductorPage</td><td>CONSULTANT, REGISTRAR</td><td>Wizard step 1+</td></tr>
+        <tr><td class="mono">/round/:id/participate</td><td>juniorDoctor/RoundParticipatePage</td><td>JUNIOR_DOCTOR, NURSE</td><td>Read-only</td></tr>
+        <tr><td class="mono">/team</td><td>consultant/MyTeamPage</td><td>CONSULTANT</td></tr>
+        <tr><td class="mono">/escalations</td><td>(role-aware)</td><td>CONSULTANT, REGISTRAR, WARD_SUPERVISOR</td><td>Inbox vs queue</td></tr>
+        <tr><td class="mono">/admit</td><td>registrar/AdmissionFormPage</td><td>REGISTRAR, CONSULTANT</td></tr>
+        <tr><td class="mono">/tasks</td><td>(role-aware)</td><td>JUNIOR_DOCTOR, NURSE</td></tr>
+        <tr><td class="mono">/vitals</td><td>nurse/VitalsFormPage</td><td>NURSE</td></tr>
+        <tr><td class="mono">/escalations/new</td><td>nurse/EscalationCreatePage</td><td>NURSE</td></tr>
+        <tr><td class="mono">/handover</td><td>(role-aware)</td><td>NURSE, JUNIOR_DOCTOR, WARD_SUPERVISOR</td><td>Notes vs management</td></tr>
+        <tr><td class="mono">/supervisor/dashboard</td><td>supervisor/DashboardPage</td><td>WARD_SUPERVISOR</td></tr>
+        <tr><td class="mono">/supervisor/shifts</td><td>supervisor/ShiftAssignmentPage</td><td>WARD_SUPERVISOR</td></tr>
+        <tr><td class="mono">/supervisor/rounds</td><td>supervisor/RoundHistoryPage</td><td>WARD_SUPERVISOR</td></tr>
+        <tr><td class="mono">/supervisor/reports</td><td>supervisor/ReportsPage</td><td>WARD_SUPERVISOR</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="stores">4. State management</h2>
+    <p>Three Zustand stores. Server data is fetched per-component (or via SWR-style hooks); we don't cache it globally.</p>
+
+    <h3>authStore</h3>
+    <pre>{ token, refreshToken, user, setAuth, clearAuth, isAuthenticated }</pre>
+
+    <h3>notificationStore</h3>
+    <pre>{
+  toasts: [{ id, kind: 'success'|'error'|'warn'|'info', title, body?, duration? }],
+  addToast(t),
+  removeToast(id)
+}</pre>
+
+    <h3>roundConductorStore (ephemeral)</h3>
+    <pre>{
+  roundId: string | null,
+  step: 0..5,
+  patientQueue: string[],   // patient ids in priority order
+  currentIndex: number,
+  reviews: { [patientId]: PatientReview },   // unsaved local drafts
+  postRoundTasks: { [patientId]: CareTaskDraft[] },
+  setRound(round), setStep(n), setIndex(n),
+  saveReviewLocal(pid, data), saveTaskLocal(pid, task),
+  reset()
+}</pre>
+    <p>Persisted to <code>sessionStorage</code> so refresh during a round resumes at the same patient. Cleared on round complete or cancel.</p>
+
+    <h2 id="services">5. API service layer</h2>
+    <p>Each service is a thin wrapper around the axios client. <code>hospitalId</code> is never sent — it's read from the JWT server-side.</p>
+
+    <h3>authService</h3>
+    <ul>
+      <li><span class="pill pill-post">POST</span> <code>login({email,password})</code> → <code>/auth/login</code></li>
+      <li><span class="pill pill-post">POST</span> <code>refresh()</code> → <code>/auth/refresh</code></li>
+      <li><span class="pill pill-post">POST</span> <code>logout()</code> → <code>/auth/logout</code></li>
+      <li><span class="pill pill-post">POST</span> <code>changePassword({current,new})</code> → <code>/auth/change-password</code></li>
+    </ul>
+
+    <h3>patientService</h3>
+    <ul>
+      <li><span class="pill pill-post">POST</span> <code>create(payload)</code></li>
+      <li><span class="pill pill-get">GET</span> <code>get(id)</code></li>
+      <li><span class="pill pill-put">PUT</span> <code>update(id, patch)</code></li>
+      <li><span class="pill pill-put">PUT</span> <code>discharge(id, body)</code></li>
+      <li><span class="pill pill-get">GET</span> <code>timeline(id)</code></li>
+      <li>Plus NoK CRUD scoped to <code>/patients/:id/next-of-kin</code></li>
+    </ul>
+
+    <h3>vitalsService</h3>
+    <ul>
+      <li><span class="pill pill-post">POST</span> <code>record(patientId, vitals)</code> — response may include <code>escalation</code> object</li>
+      <li><span class="pill pill-get">GET</span> <code>list(patientId)</code></li>
+      <li><span class="pill pill-get">GET</span> <code>latest(patientId)</code></li>
+    </ul>
+
+    <h3>roundService</h3>
+    <ul>
+      <li><span class="pill pill-post">POST</span> <code>create(payload)</code> → <code>/rounds</code> (returns auto-ordered queue)</li>
+      <li><span class="pill pill-put">PUT</span> <code>start(id)</code>, <code>complete(id)</code>, <code>cancel(id)</code></li>
+      <li><span class="pill pill-post">POST</span> <code>addReview(roundId, body)</code></li>
+      <li><span class="pill pill-put">PUT</span> <code>updateReview(roundId, reviewId, body)</code></li>
+    </ul>
+
+    <p>Other services follow the same shape — see project structure list for full enumeration. All non-auth services use the shared axios instance and inherit the 401-refresh behaviour.</p>
+
+    <h2 id="components">6. Shared components</h2>
+    <p>Built from Tailwind primitives. No external UI kit. Visual reference: <a class="text-blue-700 underline" href="index.html">prototype</a>.</p>
+
+    <table>
+      <thead><tr><th>Component</th><th>Props</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Sidebar</td><td>role</td><td>Reads NAV[role] config; renders icon + label + optional badge count from polled data</td></tr>
+        <tr><td>TopBar</td><td>—</td><td>Hospital name (from authStore), search, notifications bell, user menu</td></tr>
+        <tr><td>PatientCard / Row</td><td>patient, onClick, reviewed?, current?</td><td>Acuity colour, NEWS badge, status chip, sparkline (optional)</td></tr>
+        <tr><td>AcuityBadge</td><td>level: CRITICAL|HIGH|MEDIUM|LOW</td><td>Red/Orange/Yellow/Green; always paired with text label</td></tr>
+        <tr><td>NEWSBadge</td><td>score, size: sm|md|lg</td><td>Green 0–4, Amber 5–6, Red 7+. Always shows numeric value.</td></tr>
+        <tr><td>StatusChip</td><td>status</td><td>Maps every entity status string to a coloured pill</td></tr>
+        <tr><td>TaskCard</td><td>task, onAdvance, dense?</td><td>Forward-only state machine (PENDING → IN_PROGRESS → COMPLETED). Overdue red border.</td></tr>
+        <tr><td>EscalationCard</td><td>esc, onAck, onResolve, currentUserRole</td><td>RED has pulsing border; AMBER amber-tinted. Ack button hidden if status≠OPEN.</td></tr>
+        <tr><td>ConfirmModal</td><td>open, title, message, onConfirm, onCancel, danger?</td><td>Used for all destructive actions</td></tr>
+        <tr><td>Toast (notificationStore)</td><td>kind, title, body?, duration?</td><td>Auto-dismisses, slide-in top-right</td></tr>
+        <tr><td>LoadingSpinner / SkeletonLoader</td><td>—</td><td>Skeleton for table rows, spinner for inline actions</td></tr>
+        <tr><td>EmptyState</td><td>icon, title, body, action?</td><td>For empty lists; not a full-page redirect</td></tr>
+        <tr><td>FormField</td><td>label, hint?, error?, required?, children</td><td>Wraps RHF register; renders label + control + error</td></tr>
+        <tr><td>DataTable</td><td>columns, rows, onRowClick?, sortable?, paginate?</td><td>Sticky head, hover row, optional pagination</td></tr>
+        <tr><td>NEWSSparkline / VitalsChart</td><td>history, w, h</td><td>Recharts LineChart with amber + red threshold lines</td></tr>
+        <tr><td>WardOccupancyBar</td><td>occupied, total</td><td>Coloured by % (green &lt;70, amber 70–85, red &gt;85)</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="validation">7. Form validation</h2>
+    <p>All forms use <code>react-hook-form</code> with zod resolver. Inline error message under each field; submit button disabled until valid.</p>
+
+    <table>
+      <thead><tr><th>Form</th><th>Field</th><th>Rule</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="2">Login</td><td>email</td><td>required, email format</td></tr>
+        <tr><td>password</td><td>required, min 8</td></tr>
+        <tr><td rowspan="3">Department</td><td>name</td><td>required, max 80</td></tr>
+        <tr><td>code</td><td>required, /^[A-Z]{2,6}$/</td></tr>
+        <tr><td>specialty</td><td>required, max 80</td></tr>
+        <tr><td rowspan="3">Ward</td><td>name</td><td>required, max 80</td></tr>
+        <tr><td>departmentId</td><td>required uuid</td></tr>
+        <tr><td>beds</td><td>integer 1–60</td></tr>
+        <tr><td rowspan="4">User</td><td>firstName, lastName</td><td>required, max 50</td></tr>
+        <tr><td>email</td><td>required, email format, unique (server)</td></tr>
+        <tr><td>role</td><td>enum (6 roles)</td></tr>
+        <tr><td>departmentId</td><td>required for clinical roles</td></tr>
+        <tr><td rowspan="6">Vitals</td><td>resp</td><td>integer, 4–60</td></tr>
+        <tr><td>spo2</td><td>integer, 50–100</td></tr>
+        <tr><td>temp</td><td>number, 25.0–45.0, 1 decimal</td></tr>
+        <tr><td>sys</td><td>integer, 40–260</td></tr>
+        <tr><td>hr</td><td>integer, 20–240</td></tr>
+        <tr><td>cons</td><td>enum ALERT|VOICE|PAIN|UNRESPONSIVE</td></tr>
+        <tr><td rowspan="5">Patient (admit)</td><td>firstName, lastName</td><td>required, max 50</td></tr>
+        <tr><td>age</td><td>integer 0–120</td></tr>
+        <tr><td>wardId, bed</td><td>required; bed unique within ward</td></tr>
+        <tr><td>primaryDiagnosis</td><td>required, max 200</td></tr>
+        <tr><td>acuity</td><td>required enum</td></tr>
+        <tr><td rowspan="4">Care task</td><td>title</td><td>required, max 120</td></tr>
+        <tr><td>priority</td><td>enum</td></tr>
+        <tr><td>windowStart, windowEnd</td><td>HH:MM, end &gt; start</td></tr>
+        <tr><td>assigneeRole</td><td>enum</td></tr>
+        <tr><td rowspan="2">Round patient review</td><td>clinicalStatus</td><td>required enum</td></tr>
+        <tr><td>managementPlan</td><td>required, min 10, max 4000</td></tr>
+        <tr><td>Clinical note</td><td>body</td><td>required, min 10, max 8000</td></tr>
+        <tr><td>NoK</td><td>phone</td><td>E.164 (e.g. +234…); required if method ∈ {SMS,BOTH}</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="errors">8. Error handling</h2>
+    <table>
+      <thead><tr><th>Scenario</th><th>UX</th></tr></thead>
+      <tbody>
+        <tr><td>Network offline</td><td>Persistent yellow banner: "You're offline. Changes will not be saved." Retry button. Detected via <code>navigator.onLine</code> + <code>online</code>/<code>offline</code> events.</td></tr>
+        <tr><td>400 validation</td><td>Map response <code>fieldErrors</code> to RHF <code>setError</code>. Top-level message in toast.</td></tr>
+        <tr><td>401 after refresh fail</td><td><code>authStore.clearAuth()</code> + redirect to <code>/login?expired=1</code>. Show toast "Session expired".</td></tr>
+        <tr><td>403</td><td>Render <code>&lt;Forbidden/&gt;</code> in place. Do <strong>not</strong> redirect.</td></tr>
+        <tr><td>404</td><td>Inline EmptyState ("Patient not found"). No redirect.</td></tr>
+        <tr><td>409 conflict</td><td>Specific message per code: e.g. "A MORNING round is already in progress for this team."</td></tr>
+        <tr><td>500</td><td>Generic toast "Something went wrong on our side." + console.error full payload. Sentry hook (if wired).</td></tr>
+        <tr><td>Kafka delay</td><td>Optimistic update on the client (push to local list); reconcile on next poll. Mark as "Pending sync" until visible in server response.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="polling">9. Polling strategy</h2>
+    <ul>
+      <li>Custom <code>usePolling(fn, ms)</code>: starts on mount, clears on unmount, pauses when tab hidden (<code>document.visibilityState</code>).</li>
+      <li>Ward dashboard: <code>GET /wards/:id/dashboard</code> every <strong>30s</strong></li>
+      <li>Open escalations list: every <strong>20s</strong></li>
+      <li>Current shift status: every <strong>60s</strong></li>
+      <li>All other data: manual refetch (refresh button)</li>
+      <li>Each polled view shows "Last updated: <em>X</em>s ago" indicator (recomputed every second from a stored timestamp).</li>
+    </ul>
+
+    <h2 id="responsive">10. Responsive design</h2>
+    <ul>
+      <li>Targets: <strong>md (≥768px)</strong> tablet workstations and <strong>lg (≥1024px)</strong> desktop. Mobile (&lt;768px) is explicitly unsupported.</li>
+      <li>Tablet-first design for: Vitals form, Round wizard, Handover entry, Patient detail.</li>
+      <li>Desktop-first design for: Admin pages, Supervisor dashboard, Reports.</li>
+      <li>Sidebar collapses to icon-only at <code>&lt;md</code> (not used in production but graceful).</li>
+    </ul>
+
+    <h2 id="a11y">11. Accessibility</h2>
+    <ul>
+      <li>Every <code>&lt;input/&gt;</code>, <code>&lt;select/&gt;</code>, <code>&lt;textarea/&gt;</code> wrapped by FormField with associated <code>&lt;label/&gt;</code>.</li>
+      <li>Status colour always paired with a text label or icon (e.g. RED escalation has both pulsing red border <em>and</em> "RED" pill).</li>
+      <li>Focus rings (<code>focus:outline focus:ring-2 ring-blue-500</code>) on every interactive element.</li>
+      <li>Modal: <code>role="dialog" aria-modal="true"</code>, focus trapped, ESC closes.</li>
+      <li>Round wizard: ↑/↓ navigate patient queue; Enter opens current patient.</li>
+      <li>RED escalation and NEWS≥7 emit <code>aria-live="assertive"</code> announcement.</li>
+      <li>Tab order follows visual reading order on every page.</li>
+    </ul>
+
+    <h2 id="decisions">12. Design decisions (judgment calls)</h2>
+    <ol>
+      <li><strong>Role switcher in sidebar</strong> is a prototype-only convenience. In production, role is fixed per session from the JWT.</li>
+      <li><strong>Vitals form preselects ALERT</strong> for LOC because it's the most common state and reduces taps; nurse must explicitly change it for non-alert patients (a deliberate friction at the safe end).</li>
+      <li><strong>Discharge CONFIRMED gating</strong>: option is rendered but <code>disabled</code> for non-consultants (with a tooltip), rather than hidden. This keeps the option discoverable so juniors know it exists and who can set it.</li>
+      <li><strong>Round wizard remembers position via sessionStorage</strong> (per spec) — but on a different patient, the in-progress draft is preserved separately so partial reviews aren't lost.</li>
+      <li><strong>Optimistic task-state advance</strong>: the UI flips status immediately and rolls back on error toast. Clinical staff cannot tolerate a 400ms wait before a button registers.</li>
+      <li><strong>Patient names</strong> shown as <code>LASTNAME, Firstname</code> per UK clinical convention, even though Nigerian convention often differs — consistent format aids quick scanning. (Re-evaluate with end users.)</li>
+      <li><strong>RED escalation modal blocks the page</strong> on submit so the nurse cannot accidentally navigate away before acknowledging the consequence.</li>
+      <li><strong>Handover sign-off requires all patients to have a note</strong>; the supervisor cannot sign off on an incomplete handover. This is stricter than the PRD demands but is the clinically safer default.</li>
+    </ol>
+
+  </main>
+</div>
+</body>
+</html>

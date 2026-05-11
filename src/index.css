@@ -1,0 +1,243 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --cr-bg: #edf1f6;
+    --cr-surface: #ffffff;
+    --cr-surface-2: #f6f8fb;
+    --cr-surface-3: #eef2f7;
+    --cr-ink: #0f172a;
+    --cr-ink-2: #334155;
+    --cr-muted: #64748b;
+    --cr-line: #dbe3ed;
+    --cr-line-strong: #c6d2df;
+    --cr-brand: #0b5cab;
+    --cr-brand-ink: #083f74;
+    --cr-accent: #0e7490;
+    --cr-success: #15803d;
+    --cr-warn: #b45309;
+    --cr-danger: #b91c1c;
+    --cr-danger-bg: #fee2e2;
+    --cr-amber-bg: #fef3c7;
+    --cr-green-bg: #dcfce7;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    color: var(--cr-ink);
+    background:
+      radial-gradient(circle at 18% 0%, rgba(14, 116, 144, 0.08), transparent 40%),
+      radial-gradient(circle at 95% 10%, rgba(11, 92, 171, 0.1), transparent 42%),
+      radial-gradient(circle at 50% 100%, rgba(11, 92, 171, 0.05), transparent 50%),
+      var(--cr-bg);
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+}
+
+@layer components {
+  .panel {
+    background: var(--cr-surface);
+    border: 1px solid var(--cr-line);
+  }
+
+  .hairline {
+    border-color: var(--cr-line);
+  }
+
+  .ink-2 {
+    color: var(--cr-ink-2);
+  }
+
+  .ink-mute {
+    color: var(--cr-muted);
+  }
+
+  .mono {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--cr-line-strong);
+    background: #fff;
+    color: var(--cr-ink);
+  }
+
+  .btn:hover {
+    background: #f8fafc;
+  }
+
+  .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: var(--cr-brand);
+    border-color: var(--cr-brand);
+    color: #fff;
+  }
+
+  .btn-primary:hover {
+    background: var(--cr-brand-ink);
+  }
+
+  .btn-danger {
+    background: var(--cr-danger);
+    border-color: var(--cr-danger);
+    color: #fff;
+  }
+
+  .btn-ghost {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .btn-ghost:hover {
+    background: #eef2f6;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .field-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--cr-muted);
+  }
+
+  .input,
+  .select,
+  .textarea {
+    width: 100%;
+    border: 1px solid var(--cr-line-strong);
+    background: #fff;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 13px;
+    color: var(--cr-ink);
+  }
+
+  .input:focus,
+  .select:focus,
+  .textarea:focus {
+    outline: none;
+    border-color: var(--cr-brand);
+    box-shadow: 0 0 0 3px rgba(11, 92, 171, 0.15);
+  }
+
+  .row-hover:hover {
+    background: #f8fafc;
+  }
+
+  table.cr {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+  }
+
+  table.cr th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--cr-muted);
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--cr-line);
+    position: sticky;
+    top: 0;
+  }
+
+  table.cr td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--cr-line);
+  }
+
+  table.cr tr:hover td {
+    background: #f8fafc;
+  }
+
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+
+  .grid-bg {
+    background-image: linear-gradient(0deg, transparent 31px, #eef2f6 32px),
+      linear-gradient(90deg, transparent 31px, #eef2f6 32px);
+    background-size: 32px 32px;
+  }
+}
+
+@keyframes pulseRed {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(185, 28, 28, 0);
+  }
+}
+
+.pulse-red {
+  animation: pulseRed 1.6s ease-in-out infinite;
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fadein {
+  animation: fadein 0.18s ease-out;
+}
