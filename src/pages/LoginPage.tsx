@@ -112,10 +112,6 @@ export default function LoginPage() {
               {isLoading ? "Signing in..." : "Sign in"}
             </button>
             <div className="text-xs text-center">
-              <a href="spec.html" target="_blank" rel="noreferrer" className="text-[var(--cr-brand)] hover:underline">
-                View developer spec
-              </a>
-              <span className="ink-mute"> · </span>
               <button className="ink-mute hover:underline" type="button">
                 Forgot password?
               </button>
