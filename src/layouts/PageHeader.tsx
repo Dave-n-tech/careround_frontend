@@ -8,12 +8,12 @@ type PageHeaderProps = {
 
 export function PageHeader({ title, subtitle, children }: PageHeaderProps) {
   return (
-    <div className="flex items-end justify-between">
-      <div>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
         <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
         {subtitle && <p className="ink-mute text-sm mt-0.5">{subtitle}</p>}
       </div>
-      <div className="flex gap-2">{children}</div>
+      {children && <div className="flex flex-wrap gap-2">{children}</div>}
     </div>
   );
 }

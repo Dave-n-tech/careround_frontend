@@ -1,31 +1,40 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Field, NEWSBadge } from "@/components/ui";
 import { PageHeader } from "@/layouts/PageHeader";
-import { useCreateEscalationMutation, useGetPatientsQuery } from "@/services/api";
+import { useCreateEscalationMutation, useGetLatestVitalsQuery, useCurrentWardPatients } from "@/services/api";
 import { patientFullName } from "@/utils/format";
 import { useToast } from "@/components/ui/Toast";
 
 export default function NurseCreateEscalation() {
   const toast = useToast();
-  const { data: patients = [] } = useGetPatientsQuery();
+  const { data: patients = [], isLoading: isLoadingPatients } = useCurrentWardPatients();
   const [createEscalation, { isLoading }] = useCreateEscalationMutation();
-  const [pid, setPid] = useState("p6");
+  const [pid, setPid] = useState<string>("");
+  useEffect(() => {
+    if (!pid && patients.length) setPid(patients[0].id);
+  }, [pid, patients]);
   const [severity, setSeverity] = useState<"AMBER" | "RED">("AMBER");
-  const [notes, setNotes] = useState("Persistent fever despite paracetamol. Patient appears more lethargic. Capillary refill 3 seconds. Mother reports decreased urine output overnight.");
+  const [notes, setNotes] = useState("");
   const patient = patients.find((p) => p.id === pid);
 
-  if (!patient) return null;
-  const lastVital = patient.vitals[patient.vitals.length - 1];
+  const { data: latestVitals } = useGetLatestVitalsQuery(pid, { skip: !pid });
+
+  if (isLoadingPatients) {
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">Loading patients…</div>;
+  }
+  if (!patient) {
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">No patients on this ward.</div>;
+  }
 
   return (
     <div className="space-y-4">
       <PageHeader title="Raise nurse concern" subtitle="Create an AMBER escalation routed to the on-call registrar" />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="col-span-2 panel rounded p-5 space-y-4">
+        <div className="panel rounded p-4 space-y-4 sm:p-5 lg:col-span-2">
           <Field label="Patient" required>
             <select className="select" value={pid} onChange={(e) => setPid(e.target.value)}>
-              {patients.filter((p) => p.wardId === "w1").map((p) => (
-                <option key={p.id} value={p.id}>{p.bed} · {patientFullName(p)} · {p.primaryDiagnosis}</option>
+              {patients.map((p) => (
+                <option key={p.id} value={p.id}>{p.bedNumber} · {patientFullName(p)} · {p.primaryDiagnosis}</option>
               ))}
             </select>
           </Field>
@@ -43,7 +52,7 @@ export default function NurseCreateEscalation() {
           </div>
           <div className="flex justify-end pt-2">
             <button
-              className="btn btn-primary"
+              className="btn btn-primary w-full sm:w-auto"
               disabled={isLoading || !notes.trim()}
               onClick={async () => {
                 await createEscalation({
@@ -62,17 +71,17 @@ export default function NurseCreateEscalation() {
         <div className="panel rounded p-4">
           <div className="font-semibold text-sm mb-2">Patient context</div>
           <div className="text-sm">{patientFullName(patient)}</div>
-          <div className="text-xs ink-mute mb-2">{patient.mrn} · {patient.age}{patient.sex} · Bed {patient.bed}</div>
-          <NEWSBadge score={patient.news} />
+          <div className="text-xs ink-mute mb-2">{patient.hospitalNumber} · {patient.gender} · Bed {patient.bedNumber}</div>
+          <NEWSBadge score={patient.newsScore} />
           <div className="mt-3 pt-3 border-t hairline">
             <div className="field-label">Latest vitals</div>
             <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs mt-1.5">
-              <span className="ink-mute">RR</span><span className="mono">{lastVital?.resp}/min</span>
-              <span className="ink-mute">SpO2</span><span className="mono">{lastVital?.spo2}%</span>
-              <span className="ink-mute">Temp</span><span className="mono">{lastVital?.temp}C</span>
-              <span className="ink-mute">BP</span><span className="mono">{lastVital?.sys}</span>
-              <span className="ink-mute">HR</span><span className="mono">{lastVital?.hr}bpm</span>
-              <span className="ink-mute">LOC</span><span>{lastVital?.cons}</span>
+              <span className="ink-mute">RR</span><span className="mono">{latestVitals?.respiratoryRate}/min</span>
+              <span className="ink-mute">SpO2</span><span className="mono">{latestVitals?.oxygenSaturation}%</span>
+              <span className="ink-mute">Temp</span><span className="mono">{latestVitals?.temperature}C</span>
+              <span className="ink-mute">BP</span><span className="mono">{latestVitals?.systolicBP}</span>
+              <span className="ink-mute">HR</span><span className="mono">{latestVitals?.heartRate}bpm</span>
+              <span className="ink-mute">LOC</span><span>{latestVitals?.consciousnessLevel}</span>
             </div>
           </div>
         </div>

@@ -29,6 +29,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { id: "hospital", label: "Hospital Settings", icon: "settings", path: "/admin/hospital" }
   ],
   CONSULTANT: [
+    { id: "dashboard", label: "Dashboard", icon: "dashboard", path: "/consultant" },
     { id: "patients", label: "My Team's Patients", icon: "patients", path: "/consultant/patients" },
     { id: "round", label: "Ward Round", icon: "rounds", path: "/consultant/round" },
     { id: "team", label: "My Team", icon: "team", path: "/consultant/team" },

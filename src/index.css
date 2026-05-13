@@ -38,6 +38,7 @@
     margin: 0;
     font-family: "IBM Plex Sans", system-ui, sans-serif;
     color: var(--cr-ink);
+    overflow-x: hidden;
     background:
       radial-gradient(circle at 18% 0%, rgba(14, 116, 144, 0.08), transparent 40%),
       radial-gradient(circle at 95% 10%, rgba(11, 92, 171, 0.1), transparent 42%),
@@ -86,6 +87,9 @@
     border: 1px solid var(--cr-line-strong);
     background: #fff;
     color: var(--cr-ink);
+    min-height: 34px;
+    justify-content: center;
+    white-space: nowrap;
   }
 
   .btn:hover {
@@ -152,6 +156,7 @@
     padding: 7px 10px;
     font-size: 13px;
     color: var(--cr-ink);
+    min-height: 36px;
   }
 
   .input:focus,
@@ -171,6 +176,7 @@
     border-collapse: separate;
     border-spacing: 0;
     font-size: 13px;
+    min-width: 720px;
   }
 
   table.cr th {
@@ -210,6 +216,25 @@
     background-image: linear-gradient(0deg, transparent 31px, #eef2f6 32px),
       linear-gradient(90deg, transparent 31px, #eef2f6 32px);
     background-size: 32px 32px;
+  }
+}
+
+@layer utilities {
+  @media (max-width: 767px) {
+    .panel.rounded.overflow-hidden {
+      overflow-x: auto;
+    }
+
+    table.cr {
+      display: block;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    table.cr th,
+    table.cr td {
+      white-space: nowrap;
+    }
   }
 }
 
