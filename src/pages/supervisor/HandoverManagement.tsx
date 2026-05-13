@@ -1,23 +1,116 @@
 import { useState } from "react";
+import { skipToken } from "@reduxjs/toolkit/query/react";
 import { AcuityBadge, Icons, NEWSBadge, StatusChip } from "@/components/ui";
 import { PageHeader } from "@/layouts/PageHeader";
-import { useGetCareTasksByWardQuery, useGetPatientsByWardQuery, useGetCurrentShiftQuery, useGetUsersQuery } from "@/services/api";
+import {
+  useAddPatientHandoverNoteMutation,
+  useCompleteHandoverMutation,
+  useGetCareTasksByWardQuery,
+  useGetCurrentShiftQuery,
+  useGetHandoversByWardQuery,
+  useGetPatientsByWardQuery,
+  useGetShiftsQuery,
+  useGetUsersQuery,
+  useInitiateHandoverMutation
+} from "@/services/api";
+import { useCurrentWardId } from "@/features/ward/currentWard";
 import { getUser, patientFullName } from "@/utils/format";
 import { useToast } from "@/components/ui/Toast";
 
 export default function HandoverManagement() {
   const toast = useToast();
-  const { data: patients = [] } = useGetPatientsByWardQuery("w1");
-  const { data: currentShift } = useGetCurrentShiftQuery("w1");
+  const wardId = useCurrentWardId();
+  const now = new Date();
+  const from = new Date(now);
+  from.setHours(0, 0, 0, 0);
+  const to = new Date(now);
+  to.setDate(to.getDate() + 2);
+  to.setHours(23, 59, 59, 999);
+  const { data: patients = [] } = useGetPatientsByWardQuery(wardId ?? skipToken);
+  const { data: currentShift } = useGetCurrentShiftQuery(wardId ?? skipToken);
+  const { data: shifts = [] } = useGetShiftsQuery(
+    wardId ? { wardId, from: from.toISOString(), to: to.toISOString() } : skipToken
+  );
   const { data: users = [] } = useGetUsersQuery();
-  const { data: tasks = [] } = useGetCareTasksByWardQuery({ wardId: "w1" });
+  const { data: tasks = [] } = useGetCareTasksByWardQuery(wardId ? { wardId } : skipToken);
+  const { data: handovers = [] } = useGetHandoversByWardQuery(wardId ?? skipToken);
+  const [initiateHandover, { isLoading: isInitiating }] = useInitiateHandoverMutation();
+  const [addHandoverNote, { isLoading: isSavingNote }] = useAddPatientHandoverNoteMutation();
+  const [completeHandover, { isLoading: isCompleting }] = useCompleteHandoverMutation();
   const [step, setStep] = useState(0);
+  const [draftHandoverId, setDraftHandoverId] = useState<string | null>(null);
   const [handoverNotes, setHandoverNotes] = useState<Record<string, string>>({});
   const [urgent, setUrgent] = useState<Record<string, boolean>>({});
 
-  const wardPatients = patients.filter((p) => p.wardId === "w1");
+  const wardPatients = wardId ? patients.filter((p) => p.wardId === wardId) : [];
+  const activeHandover =
+    handovers.find((h) => h.status === "IN_PROGRESS" || h.status === "PENDING") ||
+    handovers.find((h) => !h.completedAt);
+  const draftHandover = draftHandoverId ? handovers.find((h) => h.id === draftHandoverId) : undefined;
+  const effectiveHandover = activeHandover || draftHandover;
+  const incomingShift = shifts
+    .filter((shift) => shift.id !== currentShift?.id && shift.startTime > (currentShift?.startTime || ""))
+    .sort((a, b) => a.startTime.localeCompare(b.startTime))[0];
 
-  if (!currentShift) return null;
+  if (!wardId) return <div className="panel rounded p-6 text-center ink-mute sm:p-12">No ward assigned.</div>;
+  if (!currentShift) return <div className="panel rounded p-6 text-center ink-mute sm:p-12">No active shift for this ward.</div>;
+
+  async function beginHandover() {
+    if (!wardId || !currentShift) return;
+    if (effectiveHandover) {
+      setStep(1);
+      return;
+    }
+    if (!incomingShift) {
+      toast({ kind: "error", title: "No incoming shift found", body: "Create or assign the next shift before initiating handover." });
+      return;
+    }
+    try {
+      const created = await initiateHandover({
+        wardId,
+        outgoingShiftId: currentShift.id,
+        incomingShiftId: incomingShift.id
+      }).unwrap();
+      setDraftHandoverId(created.id);
+      setStep(1);
+      toast({ kind: "success", title: "Handover initiated" });
+    } catch {
+      toast({ kind: "error", title: "Could not initiate handover" });
+    }
+  }
+
+  async function saveHandover() {
+    if (!effectiveHandover) {
+      toast({ kind: "error", title: "No active handover", body: "Initiate the handover before signing off notes." });
+      return;
+    }
+    const entries = wardPatients.filter((p) => handoverNotes[p.id]?.trim());
+    try {
+      for (const patient of entries) {
+        const outstandingTaskIds = tasks
+          .filter((t) => t.patientId === patient.id && t.status !== "COMPLETED")
+          .map((t) => t.id)
+          .join(",");
+        await addHandoverNote({
+          handoverId: effectiveHandover.id,
+          patientId: patient.id,
+          statusSummary: handoverNotes[patient.id],
+          outstandingTaskIds: outstandingTaskIds || undefined,
+          urgencyFlag: Boolean(urgent[patient.id])
+        }).unwrap();
+      }
+      await completeHandover({
+        handoverId: effectiveHandover.id,
+        generalNotes: `${entries.length} patient handover notes completed.`
+      }).unwrap();
+      toast({ kind: "success", title: "Handover signed off", body: "Incoming team notified" });
+      setHandoverNotes({});
+      setUrgent({});
+      setStep(0);
+    } catch {
+      toast({ kind: "error", title: "Could not save handover" });
+    }
+  }
 
   if (step === 0) {
     return (
@@ -35,12 +128,22 @@ export default function HandoverManagement() {
             </div>
             <div className="border hairline rounded p-4">
               <div className="field-label mb-2">Incoming shift</div>
-              <div className="font-semibold">Next Shift</div>
-              <div className="text-sm text-amber-700 mt-2">No lead assigned. Assign now.</div>
+              <div className="font-semibold">{incomingShift ? `${incomingShift.type} Shift` : "No next shift found"}</div>
+              <div className="text-sm mt-2 space-y-1">
+                <div><span className="ink-mute">Lead:</span> {incomingShift?.leadDoctorId ? getUser(users, incomingShift.leadDoctorId)?.firstName : "Unassigned"}</div>
+                <div><span className="ink-mute">Nurse i/c:</span> {incomingShift?.nurseInChargeId ? getUser(users, incomingShift.nurseInChargeId)?.firstName : "Unassigned"}</div>
+              </div>
             </div>
           </div>
           <div className="text-sm ink-2">{wardPatients.length} patients to hand over. Each needs a status summary; mark urgent flags as appropriate.</div>
-          <button className="btn btn-primary" onClick={() => setStep(1)}>Begin handover →</button>
+          {!effectiveHandover && !incomingShift && (
+            <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              No incoming shift was returned for this ward. Create or assign the next shift first.
+            </div>
+          )}
+          <button className="btn btn-primary" onClick={beginHandover} disabled={isInitiating || (!effectiveHandover && !incomingShift)}>
+            {isInitiating ? "Starting..." : "Begin handover →"}
+          </button>
         </div>
       </div>
     );
@@ -50,12 +153,12 @@ export default function HandoverManagement() {
     const filled = Object.keys(handoverNotes).filter((k) => handoverNotes[k]?.trim()).length;
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-semibold">Handover — patient notes</h1>
             <p className="text-sm ink-mute">Step 2 of 3 · {filled}/{wardPatients.length} patients with notes</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <button className="btn" onClick={() => setStep(0)}>← Back</button>
             <button className="btn btn-primary" onClick={() => setStep(2)} disabled={filled < wardPatients.length}>Continue to sign-off →</button>
           </div>
@@ -79,7 +182,7 @@ export default function HandoverManagement() {
                 </label>
               </div>
               <div className="p-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
-                <div className="col-span-2">
+                <div className="lg:col-span-2">
                   <textarea
                     className="textarea"
                     rows={2}
@@ -133,16 +236,14 @@ export default function HandoverManagement() {
             <label key={i} className="flex items-center gap-2 text-sm"><input type="checkbox" defaultChecked />{it}</label>
           ))}
         </div>
-        <div className="flex justify-end gap-2 mt-4 pt-4 border-t hairline">
+        <div className="flex flex-col-reverse gap-2 mt-4 pt-4 border-t hairline sm:flex-row sm:justify-end">
           <button className="btn" onClick={() => setStep(1)}>← Back</button>
           <button
             className="btn btn-primary"
-            onClick={() => {
-              toast({ kind: "success", title: "Handover signed off", body: "Incoming team notified" });
-              setStep(0);
-            }}
+            onClick={saveHandover}
+            disabled={isSavingNote || isCompleting}
           >
-            Sign off handover
+            {isSavingNote || isCompleting ? "Saving..." : "Sign off handover"}
           </button>
         </div>
       </div>

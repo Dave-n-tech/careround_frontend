@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { skipToken } from "@reduxjs/toolkit/query/react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AcuityBadge,
@@ -10,6 +11,7 @@ import {
   PatientRow,
   PriorityChip,
   RoleBadge,
+  StatCard,
   StatusChip,
   TaskCard,
   useToast
@@ -19,6 +21,7 @@ import {
   useAcknowledgeEscalationMutation,
   useAdmitPatientMutation,
   useAmendNoteMutation,
+  useCreateCareTaskMutation,
   useCreateClinicalNoteMutation,
   useCurrentWardCareTasks,
   useCurrentWardEscalations,
@@ -26,25 +29,188 @@ import {
   useCurrentWardRounds,
   useGetClinicalNotesByPatientQuery,
   useGetDepartmentsQuery,
+  useAddPatientHandoverNoteMutation,
+  useGetHandoverNotesQuery,
+  useGetHandoversByWardQuery,
+  useGetCurrentShiftQuery,
+  useGetShiftsQuery,
   useGetLatestVitalsQuery,
   useGetOnCallRotationsQuery,
   useGetPatientByIdQuery,
   useGetPatientNextOfKinQuery,
   useGetCareTasksByPatientQuery,
+  useGetConsultantDashboardQuery,
   useGetTeamsQuery,
   useGetUsersQuery,
   useGetVitalsHistoryQuery,
   useGetWardsQuery,
   useResolveEscalationMutation,
   useSendTeamInviteMutation,
+  useInitiateHandoverMutation,
   useUpdateCareTaskStatus
 } from "@/services/api";
 import { useCurrentWardId } from "@/features/ward/currentWard";
-import type { CareTask, ClinicalNote, NoteType, Patient, Role } from "@/types/domain";
+import type { CareTask, ClinicalNote, NoteType, Patient, PatientHandoverNote, Role } from "@/types/domain";
 import { getUser, getWard, patientFullName, userFullName } from "@/utils/format";
 import { useAppSelector } from "@/app/hooks";
 
 const ACUITY_ORDER: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+
+function dashboardNumber(data: Record<string, unknown> | undefined, keys: string[], fallback: number) {
+  for (const key of keys) {
+    const value = data?.[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  }
+  return fallback;
+}
+
+function dashboardString(data: Record<string, unknown> | undefined, keys: string[], fallback: string) {
+  for (const key of keys) {
+    const value = data?.[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return fallback;
+}
+
+export function ConsultantDashboard() {
+  const currentUser = useAppSelector((state) => state.auth.user);
+  const {
+    data: dashboard,
+    isLoading: isDashboardLoading,
+    isError: isDashboardError,
+    refetch: refetchDashboard
+  } = useGetConsultantDashboardQuery();
+  const { data: patients = [], isLoading: isPatientsLoading } = useCurrentWardPatients();
+  const { data: teams = [] } = useGetTeamsQuery();
+  const { data: tasks = [] } = useCurrentWardCareTasks();
+  const { data: escalations = [] } = useCurrentWardEscalations();
+  const { data: rounds = [] } = useCurrentWardRounds();
+
+  const team =
+    teams.find((t) => t.consultantId === currentUser?.id) ||
+    teams.find((t) => t.departmentId === currentUser?.departmentId);
+  const teamPatients = team ? patients.filter((p) => p.medicalTeamId === team.id) : patients;
+  const openTasks = tasks.filter((t) => t.status !== "COMPLETED");
+  const openEscalations = escalations.filter((e) => e.status !== "RESOLVED");
+  const activeRounds = rounds.filter((r) => r.status === "IN_PROGRESS");
+
+  const stats = [
+    {
+      label: "Team patients",
+      value: dashboardNumber(dashboard, ["teamPatients", "patientCount", "patients", "totalPatients"], teamPatients.length),
+      sub: `${teamPatients.filter((p) => p.acuityLevel === "CRITICAL" || p.status === "DETERIORATING").length} high attention`,
+      accent: "#0b5cab",
+      icon: <Icons.patients size={18} />
+    },
+    {
+      label: "Open escalations",
+      value: dashboardNumber(dashboard, ["openEscalations", "escalationCount", "activeEscalations"], openEscalations.length),
+      sub: `${openEscalations.filter((e) => e.severity === "RED").length} red`,
+      accent: "#b91c1c",
+      icon: <Icons.escalation size={18} />
+    },
+    {
+      label: "Open tasks",
+      value: dashboardNumber(dashboard, ["openTasks", "pendingTasks", "taskCount"], openTasks.length),
+      sub: `${openTasks.filter((t) => t.priority === "URGENT" || t.priority === "EMERGENCY").length} urgent`,
+      accent: "#7c3aed",
+      icon: <Icons.tasks size={18} />
+    },
+    {
+      label: "Active rounds",
+      value: dashboardNumber(dashboard, ["activeRounds", "roundsInProgress", "inProgressRounds"], activeRounds.length),
+      sub: dashboardString(dashboard, ["teamName", "medicalTeamName"], team?.name || "Current team"),
+      accent: "#15803d",
+      icon: <Icons.rounds size={18} />
+    }
+  ];
+
+  const loading = isDashboardLoading || isPatientsLoading;
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Consultant dashboard"
+        subtitle={isDashboardError ? "Backend dashboard unavailable" : "Live consultant summary"}
+      >
+        <button className="btn" onClick={() => refetchDashboard()}>
+          <Icons.refresh size={14} />Refresh
+        </button>
+      </PageHeader>
+
+      {isDashboardError && (
+        <div className="panel rounded border-l-4 border-l-red-600 p-4 text-sm text-red-700">
+          Could not load /dashboard/consultant. The clinical lists below are still loaded from backend endpoints.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <StatCard key={stat.label} {...stat} value={loading ? "..." : stat.value} />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="panel rounded lg:col-span-2">
+          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Highest attention patients</div>
+          <table className="cr">
+            <thead>
+              <tr>
+                <th>Bed</th>
+                <th>Patient</th>
+                <th>NEWS</th>
+                <th>Acuity</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...teamPatients]
+                .sort(
+                  (a, b) =>
+                    (ACUITY_ORDER[b.acuityLevel] ?? 0) - (ACUITY_ORDER[a.acuityLevel] ?? 0) ||
+                    (b.newsScore ?? 0) - (a.newsScore ?? 0)
+                )
+                .slice(0, 6)
+                .map((patient) => (
+                  <tr key={patient.id}>
+                    <td className="mono text-xs">{patient.bedNumber || "-"}</td>
+                    <td className="font-medium">{patientFullName(patient)}</td>
+                    <td><NEWSBadge score={patient.newsScore} size="sm" /></td>
+                    <td><AcuityBadge level={patient.acuityLevel} /></td>
+                    <td><StatusChip status={patient.status} /></td>
+                  </tr>
+                ))}
+              {!loading && teamPatients.length === 0 && (
+                <tr><td colSpan={5} className="text-center ink-mute p-6">No team patients found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="panel rounded">
+          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Backend dashboard payload</div>
+          <div className="p-4 text-xs">
+            {isDashboardLoading ? (
+              <div className="ink-mute">Loading dashboard summary...</div>
+            ) : dashboard ? (
+              <div className="space-y-2">
+                {Object.entries(dashboard).slice(0, 8).map(([key, value]) => (
+                  <div key={key} className="flex items-start justify-between gap-3 border-b hairline pb-2">
+                    <span className="ink-mute">{key}</span>
+                    <span className="font-medium text-right break-all">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="ink-mute">No dashboard payload returned.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ageFromDob(dob: string | null | undefined): string {
   if (!dob) return "—";
@@ -93,11 +259,11 @@ export function PatientListPage({ scope, title }: { scope: "team" | "ward"; titl
         ))}
       </div>
       {isLoading ? (
-        <div className="panel rounded p-12 text-center ink-mute">Loading patients…</div>
+        <div className="panel rounded p-6 text-center ink-mute sm:p-12">Loading patients…</div>
       ) : isError ? (
-        <div className="panel rounded p-12 text-center text-red-700">Could not load patients. <button className="underline" onClick={() => refetch()}>Retry</button></div>
+        <div className="panel rounded p-6 text-center text-red-700 sm:p-12">Could not load patients. <button className="underline" onClick={() => refetch()}>Retry</button></div>
       ) : list.length === 0 ? (
-        <div className="panel rounded p-12 text-center ink-mute">No patients match this filter.</div>
+        <div className="panel rounded p-6 text-center ink-mute sm:p-12">No patients match this filter.</div>
       ) : (
         <div className="panel rounded overflow-hidden">
           <table className="cr">
@@ -154,10 +320,10 @@ export function PatientDetailPage() {
   const [tab, setTab] = useState("overview");
 
   if (isLoadingPatient) {
-    return <div className="panel rounded p-12 text-center ink-mute">Loading patient…</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">Loading patient…</div>;
   }
   if (isError || !patient) {
-    return <div className="panel rounded p-12 text-center ink-mute">Patient not found.</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">Patient not found.</div>;
   }
 
   const ward = getWard(wards, patient.wardId);
@@ -219,9 +385,9 @@ function PatientOverview({ patient, tasks, notes }: { patient: Patient; tasks: C
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div className="col-span-2 space-y-4">
+      <div className="space-y-4 lg:col-span-2">
         <div className="panel rounded">
-          <div className="px-4 py-3 border-b hairline flex justify-between">
+          <div className="px-4 py-3 border-b hairline flex flex-col gap-1 sm:flex-row sm:justify-between">
             <span className="font-semibold text-sm">Latest vitals</span>
             <span className="text-xs ink-mute">{latestVitals?.recordedAt?.slice(0, 16).replace("T", " ") || "no readings"}</span>
           </div>
@@ -260,7 +426,7 @@ function PatientOverview({ patient, tasks, notes }: { patient: Patient; tasks: C
           <div className="space-y-2">
             {tasks.filter((t) => t.status !== "COMPLETED").slice(0, 4).map((t) => (
               <div key={t.id} className="text-sm border-b hairline pb-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span className="font-medium">{t.title}</span>
                   <PriorityChip priority={t.priority} />
                 </div>
@@ -294,7 +460,7 @@ function PatientVitalsTab({ patientId }: { patientId: string }) {
 
   return (
     <div className="panel rounded">
-      <div className="px-4 py-3 border-b hairline flex items-center justify-between">
+      <div className="px-4 py-3 border-b hairline flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="font-semibold text-sm">Vitals history</div>
         <span className="text-xs ink-mute">{history.length} recordings</span>
       </div>
@@ -470,7 +636,7 @@ function PatientNoKTab({ patientId }: { patientId: string }) {
   }
   return (
     <div className="panel rounded p-4 space-y-3">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="font-semibold text-sm">Next of kin contacts</h3>
       </div>
       {nok.length === 0 && <div className="text-sm ink-mute">No next of kin on file.</div>}
@@ -517,7 +683,7 @@ export function MyTeamPage() {
     teams[0];
 
   if (!team) {
-    return <div className="panel rounded p-12 text-center ink-mute">No team found.</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">No team found.</div>;
   }
 
   const consultant = team.consultantId ? getUser(users, team.consultantId) : undefined;
@@ -595,7 +761,7 @@ export function EscalationInbox({ scope }: { scope: "consultant" | "registrar" }
       {isLoading ? (
         <div className="panel rounded p-8 text-center ink-mute">Loading escalations…</div>
       ) : list.length === 0 ? (
-        <div className="panel rounded p-12 text-center ink-mute">No escalations.</div>
+        <div className="panel rounded p-6 text-center ink-mute sm:p-12">No escalations.</div>
       ) : (
         <div className="space-y-3">
           {list.map((e) => {
@@ -701,7 +867,7 @@ export function AdmissionForm() {
     <div className="space-y-4">
       <PageHeader title="Admit patient" subtitle="New patient admission" />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="col-span-2 panel rounded p-5 space-y-4">
+        <div className="panel rounded p-4 space-y-4 sm:p-5 lg:col-span-2">
           <h3 className="font-semibold text-sm">Patient details</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Hospital number (MRN)" required>
@@ -765,7 +931,7 @@ export function AdmissionForm() {
             {onCall.filter((o) => o.departmentId === departmentId).map((o) => {
               const staff = getUser(users, o.doctorId);
               return (
-                <div key={o.id} className="flex items-center justify-between text-sm mb-1">
+                <div key={o.id} className="flex flex-col gap-1 text-sm mb-1 sm:flex-row sm:items-center sm:justify-between">
                   <span>{staff ? userFullName(staff) : "—"}</span>
                   <RoleBadge role={o.role.includes("CONSULTANT") ? "CONSULTANT" : "REGISTRAR"} />
                 </div>
@@ -786,16 +952,55 @@ export function MyTasksList({ role }: { role: Role }) {
   const { data: tasks = [], isLoading } = useCurrentWardCareTasks();
   const { data: patients = [] } = useCurrentWardPatients();
   const [updateStatus, { isLoading: isUpdating }] = useUpdateCareTaskStatus();
+  const [createTask, { isLoading: isCreating }] = useCreateCareTaskMutation();
   const [filter, setFilter] = useState("OPEN");
+  const [open, setOpen] = useState(false);
+  const [patientId, setPatientId] = useState("");
+  const [title, setTitle] = useState("");
+  const [taskType, setTaskType] = useState("Observation");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState("ROUTINE");
+  const [windowStart, setWindowStart] = useState("");
+  const [windowEnd, setWindowEnd] = useState("");
 
   let list = tasks.filter((t) => t.assignedToRole === role);
   if (filter === "OPEN") list = list.filter((t) => t.status !== "COMPLETED");
   if (filter === "COMPLETED") list = list.filter((t) => t.status === "COMPLETED");
 
+  async function submitTask() {
+    if (!patientId || !title || !windowStart || !windowEnd) {
+      toast({ kind: "error", title: "Fill all required task fields" });
+      return;
+    }
+    try {
+      await createTask({
+        patientId,
+        taskType,
+        source: "NURSING_CARE_PLAN",
+        title,
+        description: description || undefined,
+        priority,
+        windowStart: new Date(windowStart).toISOString(),
+        windowEnd: new Date(windowEnd).toISOString()
+      }).unwrap();
+      toast({ kind: "success", title: "Care plan task created" });
+      setOpen(false);
+      setPatientId("");
+      setTitle("");
+      setTaskType("Observation");
+      setDescription("");
+      setPriority("ROUTINE");
+      setWindowStart("");
+      setWindowEnd("");
+    } catch {
+      toast({ kind: "error", title: "Could not create task" });
+    }
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader title="My tasks" subtitle={`${list.length} ${filter.toLowerCase()}`}>
-        {role === "NURSE" && <button className="btn btn-primary"><Icons.plus size={14} />New care plan task</button>}
+        {role === "NURSE" && <button className="btn btn-primary" onClick={() => setOpen(true)}><Icons.plus size={14} />New care plan task</button>}
       </PageHeader>
       <div className="flex gap-2">
         {["OPEN", "COMPLETED", "ALL"].map((f) => (
@@ -830,19 +1035,191 @@ export function MyTasksList({ role }: { role: Role }) {
           })}
         </div>
       )}
-      {isUpdating && <div className="text-xs ink-mute">Updating…</div>}
+      {isUpdating && <div className="text-xs ink-mute">Updating...</div>}
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="New care plan task"
+        width={640}
+        footer={
+          <>
+            <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={submitTask} disabled={isCreating}>
+              {isCreating ? "Creating..." : "Create task"}
+            </button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Field label="Patient" required>
+              <select className="select" value={patientId} onChange={(e) => setPatientId(e.target.value)}>
+                <option value="">Select...</option>
+                {patients.map((p) => (
+                  <option key={p.id} value={p.id}>{p.bedNumber ? `${p.bedNumber} - ` : ""}{patientFullName(p)}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <Field label="Task type" required>
+            <input className="input" value={taskType} onChange={(e) => setTaskType(e.target.value)} />
+          </Field>
+          <Field label="Priority" required>
+            <select className="select" value={priority} onChange={(e) => setPriority(e.target.value)}>
+              <option>ROUTINE</option>
+              <option>URGENT</option>
+              <option>EMERGENCY</option>
+            </select>
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Title" required>
+              <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </Field>
+          </div>
+          <Field label="Window start" required>
+            <input className="input mono" type="datetime-local" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} />
+          </Field>
+          <Field label="Window end" required>
+            <input className="input mono" type="datetime-local" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Description">
+              <textarea className="textarea" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+            </Field>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 export function HandoverNotesEntry() {
   const toast = useToast();
+  const wardId = useCurrentWardId();
+  const currentUser = useAppSelector((state) => state.auth.user);
+  const now = new Date();
+  const shiftsFrom = new Date(now);
+  shiftsFrom.setHours(0, 0, 0, 0);
+  const shiftsTo = new Date(now);
+  shiftsTo.setDate(shiftsTo.getDate() + 2);
+  shiftsTo.setHours(23, 59, 59, 999);
   const { data: patients = [], isLoading } = useCurrentWardPatients();
+  const { data: tasks = [] } = useCurrentWardCareTasks();
+  const { data: handovers = [] } = useGetHandoversByWardQuery(wardId || "", { skip: !wardId });
+  const { data: currentShift } = useGetCurrentShiftQuery(wardId || "", { skip: !wardId });
+  const { data: shifts = [] } = useGetShiftsQuery(
+    wardId ? { wardId, from: shiftsFrom.toISOString(), to: shiftsTo.toISOString() } : skipToken
+  );
+  const previousHandover = [...handovers]
+    .filter((handover) => handover.status === "COMPLETED" || Boolean(handover.completedAt))
+    .sort((a, b) => (b.completedAt || b.updatedAt || b.createdAt).localeCompare(a.completedAt || a.updatedAt || a.createdAt))[0];
+  const { data: previousHandoverNotes = [], isLoading: isLoadingPreviousNotes } = useGetHandoverNotesQuery(
+    previousHandover?.id || "",
+    { skip: !previousHandover?.id }
+  );
+  const [addHandoverNote, { isLoading: isSaving }] = useAddPatientHandoverNoteMutation();
+  const [initiateHandover, { isLoading: isInitiating }] = useInitiateHandoverMutation();
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [urgent, setUrgent] = useState<Record<string, boolean>>({});
+
+  const activeHandover =
+    handovers.find((h) => h.status === "IN_PROGRESS" || h.status === "PENDING") ||
+    handovers.find((h) => !h.completedAt);
+  const { data: outgoingHandoverNotes = [], isLoading: isLoadingOutgoingNotes } = useGetHandoverNotesQuery(
+    activeHandover?.id || "",
+    { skip: !activeHandover?.id }
+  );
+  const entries = patients.filter((p) => notes[p.id]?.trim());
+  const hasNotes = entries.length > 0;
+  const incomingShift = shifts
+    .filter((shift) => shift.id !== currentShift?.id && shift.startTime > (currentShift?.startTime || ""))
+    .sort((a, b) => a.startTime.localeCompare(b.startTime))[0];
+
+  async function saveNotes() {
+    if (!hasNotes) {
+      toast({ kind: "error", title: "Add at least one handover note" });
+      return;
+    }
+
+    let effectiveHandover = activeHandover;
+    if (!effectiveHandover) {
+      if (!wardId || !currentShift || !incomingShift) {
+        toast({
+          kind: "error",
+          title: "Cannot start handover yet",
+          body: "An outgoing and incoming shift are required before notes can be saved."
+        });
+        return;
+      }
+      try {
+        effectiveHandover = await initiateHandover({
+          wardId,
+          outgoingShiftId: currentShift.id,
+          incomingShiftId: incomingShift.id
+        }).unwrap();
+      } catch {
+        toast({ kind: "error", title: "Could not initiate handover" });
+        return;
+      }
+    }
+
+    try {
+      for (const patient of entries) {
+        const outstandingTaskIds = tasks
+          .filter((t) => t.patientId === patient.id && t.status !== "COMPLETED")
+          .map((t) => t.id)
+          .join(",");
+        await addHandoverNote({
+          handoverId: effectiveHandover.id,
+          patientId: patient.id,
+          statusSummary: notes[patient.id],
+          outstandingTaskIds: outstandingTaskIds || undefined,
+          urgencyFlag: Boolean(urgent[patient.id])
+        }).unwrap();
+      }
+      toast({ kind: "success", title: "Handover notes saved", body: `${entries.length} of ${patients.length} patients with notes` });
+      setNotes({});
+      setUrgent({});
+    } catch {
+      toast({ kind: "error", title: "Could not save handover notes" });
+    }
+  }
+
+  function renderHandoverNoteList(notesList: PatientHandoverNote[], emptyText: string, showAuthor = false) {
+    if (notesList.length === 0) {
+      return <div className="text-sm ink-mute">{emptyText}</div>;
+    }
+
+    return (
+      <div className="space-y-3">
+        {notesList.map((note) => {
+          const patient = patients.find((entry) => entry.id === note.patientId);
+          const addedByCurrentUser = Boolean(currentUser?.id && note.addedById === currentUser.id);
+          return (
+            <div key={note.id} className="rounded border hairline p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold">{patient ? patientFullName(patient) : note.patientId}</div>
+                  <div className="text-xs ink-mute">{patient?.bedNumber ? `Bed ${patient.bedNumber}` : "Patient handover note"}</div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {showAuthor && addedByCurrentUser && <span className="chip bg-blue-50 text-blue-700">Added by you</span>}
+                  {note.urgencyFlag && <span className="chip bg-red-100 text-red-700">Urgent</span>}
+                </div>
+              </div>
+              {note.statusSummary && <p className="mt-2 text-sm ink-2">{note.statusSummary}</p>}
+              {note.outstandingTaskIds && <div className="mt-2 text-xs ink-mute">Outstanding tasks: {note.outstandingTaskIds}</div>}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <PageHeader title="Handover notes" subtitle="Add a status summary for every patient" />
+      
       <div className="panel rounded p-3 flex items-center gap-3 bg-amber-50 border-amber-200">
         <Icons.alertCircle size={16} className="text-amber-700" />
         <div className="text-sm ink-2">Mark urgent flags for the incoming team.</div>
@@ -860,7 +1237,11 @@ export function HandoverNotesEntry() {
                 <NEWSBadge score={p.newsScore} size="sm" />
                 <StatusChip status={p.status} />
                 <label className="ml-auto flex items-center gap-1.5 text-xs">
-                  <input type="checkbox" />Urgent flag
+                  <input
+                    type="checkbox"
+                    checked={Boolean(urgent[p.id])}
+                    onChange={(e) => setUrgent({ ...urgent, [p.id]: e.target.checked })}
+                  />Urgent flag
                 </label>
               </div>
               <div className="p-3">
@@ -879,16 +1260,52 @@ export function HandoverNotesEntry() {
       <div className="flex justify-end">
         <button
           className="btn btn-primary"
-          onClick={() =>
-            toast({
-              kind: "success",
-              title: "Handover notes captured",
-              body: `${Object.keys(notes).filter((k) => notes[k].trim()).length} of ${patients.length} patients with notes`
-            })
-          }
+          onClick={saveNotes}
+          disabled={isSaving || isInitiating || !hasNotes}
         >
-          Save handover notes
+          {isSaving || isInitiating ? "Saving..." : "Save handover notes"}
         </button>
+      </div>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="panel rounded overflow-hidden">
+          <div className="border-b hairline px-4 py-3">
+            <div className="font-semibold text-sm">Incoming from previous shift</div>
+            <div className="text-xs ink-mute">
+              {previousHandover
+                ? `Completed ${previousHandover.completedAt?.slice(0, 16).replace("T", " ") || "recently"}`
+                : "No completed handover found"}
+            </div>
+          </div>
+          <div className="p-4">
+            {!previousHandover ? (
+              <div className="text-sm ink-mute">No notes have been handed over from a preceding shift yet.</div>
+            ) : isLoadingPreviousNotes ? (
+              <div className="text-sm ink-mute">Loading previous handover notes...</div>
+            ) : (
+              renderHandoverNoteList(previousHandoverNotes, "No notes were handed over from the previous shift.")
+            )}
+          </div>
+        </div>
+
+        <div className="panel rounded overflow-hidden">
+          <div className="border-b hairline px-4 py-3">
+            <div className="font-semibold text-sm">Outgoing to next shift</div>
+            <div className="text-xs ink-mute">
+              {activeHandover
+                ? `${activeHandover.status.replace("_", " ").toLowerCase()} handover`
+                : "No active handover yet"}
+            </div>
+          </div>
+          <div className="p-4">
+            {!activeHandover ? (
+              <div className="text-sm ink-mute">Saved notes for the succeeding shift will appear here.</div>
+            ) : isLoadingOutgoingNotes ? (
+              <div className="text-sm ink-mute">Loading outgoing handover notes...</div>
+            ) : (
+              renderHandoverNoteList(outgoingHandoverNotes, "No notes saved for the succeeding shift yet.", true)
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -901,10 +1318,10 @@ export function RoundParticipateView() {
   const round = rounds.find((r) => r.status === "IN_PROGRESS");
 
   if (isLoading) {
-    return <div className="panel rounded p-12 text-center ink-mute">Loading rounds…</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">Loading rounds…</div>;
   }
   if (!round) {
-    return <div className="panel rounded p-12 text-center ink-mute">No active round.</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">No active round.</div>;
   }
 
   const lead = getUser(users, round.leadDoctorId);
@@ -922,7 +1339,7 @@ export function RoundParticipateView() {
         subtitle={`${round.roundType} round${lead ? ` · led by ${userFullName(lead)}` : ""}${round.startedAt ? ` · started ${round.startedAt.slice(11, 16)}` : ""}`}
       />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="panel rounded col-span-2">
+        <div className="panel rounded lg:col-span-2">
           <div className="px-4 py-3 border-b hairline font-semibold text-sm">Patient queue</div>
           <div>
             {queue.map((p) => (
@@ -937,7 +1354,7 @@ export function RoundParticipateView() {
             {participants.map((uid) => {
               const u = getUser(users, uid);
               return (
-                <div key={uid} className="flex items-center justify-between">
+                <div key={uid} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <span>{u ? userFullName(u) : "—"}</span>
                   {u && <RoleBadge role={u.role} />}
                 </div>

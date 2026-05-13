@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { ToastProvider } from "@/components/ui";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { clearAuth } from "@/features/auth/authSlice";
+import { useLazyGetMeQuery } from "@/services/api";
 import { roleHomePath } from "@/navigation/nav";
 import RequireAuth from "@/routes/RequireAuth";
 import RequireRole from "@/routes/RequireRole";
@@ -16,11 +17,13 @@ import RegistrarRoutes from "@/pages/clinical/RegistrarRoutes";
 import JuniorDoctorRoutes from "@/pages/clinical/JuniorDoctorRoutes";
 import NurseRoutes from "@/pages/nurse/NurseRoutes";
 import SupervisorRoutes from "@/pages/supervisor/SupervisorRoutes";
+import SearchResultsPage from "@/pages/SearchResultsPage";
 
 export default function App() {
-  const role = useAppSelector((state) => state.auth.role);
+  const { accessToken, role, status, user } = useAppSelector((state) => state.auth);
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const [fetchMe] = useLazyGetMeQuery();
 
   useEffect(() => {
     function onExpired() {
@@ -31,6 +34,12 @@ export default function App() {
     return () => window.removeEventListener("cr:auth-expired", onExpired);
   }, [dispatch, navigate]);
 
+  useEffect(() => {
+    if (accessToken && status === "loading" && !user) {
+      fetchMe();
+    }
+  }, [accessToken, fetchMe, status, user]);
+
   return (
     <ToastProvider>
       <Routes>
@@ -40,6 +49,7 @@ export default function App() {
 
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
+            <Route path="/search" element={<SearchResultsPage />} />
             <Route element={<RequireRole allow={["ADMIN"]} />}>
               <Route path="/admin/*" element={<AdminRoutes />} />
             </Route>

@@ -1,5 +1,4 @@
 import { createSlice } from "@reduxjs/toolkit";
-import type { PayloadAction } from "@reduxjs/toolkit";
 import type { Role, User } from "@/types/domain";
 import { authApi } from "@/services/api/auth";
 
@@ -30,14 +29,6 @@ const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
-    setDemoAuth(state, action: PayloadAction<User>) {
-      state.user = action.payload;
-      state.role = action.payload.role;
-      state.status = "authenticated";
-      state.accessToken = "mock-session";
-      state.refreshToken = null;
-      state.error = null;
-    },
     clearAuth(state) {
       state.user = null;
       state.role = null;
@@ -104,6 +95,6 @@ const authSlice = createSlice({
   }
 });
 
-export const { setDemoAuth, clearAuth } = authSlice.actions;
+export const { clearAuth } = authSlice.actions;
 
 export default authSlice.reducer;

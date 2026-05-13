@@ -24,6 +24,7 @@ export type RecordVitalsRequest = {
   systolicBP: number;
   temperature: number;
   consciousnessLevel: string;
+  note?: string;
 };
 
 export type UpdatePatientStatusRequest = { status: string };

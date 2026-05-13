@@ -10,12 +10,17 @@ import {
   useGetWardsQuery,
   useGetMyHospitalQuery,
   useGetSystemConfigQuery,
+  useAssignWardToTeamMutation,
   useCreateDepartmentMutation,
+  useCreateOnCallRotationMutation,
+  useCreateShiftScheduleMutation,
+  useCreateTeamMutation,
   useCreateWardMutation,
   useCreateUserMutation,
+  useUpdateMyHospitalMutation,
   useUpdateSystemConfigMutation
 } from "@/services/api";
-import { getDept, getUser } from "@/utils/format";
+import { getDept, getUser, userFullName } from "@/utils/format";
 
 export function AdminDashboard() {
   const { data: hospital } = useGetMyHospitalQuery();
@@ -71,8 +76,8 @@ export function AdminDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="panel rounded col-span-2">
-          <div className="px-4 py-3 border-b hairline flex items-center justify-between">
+        <div className="panel rounded lg:col-span-2">
+          <div className="px-4 py-3 border-b hairline flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="font-semibold text-sm">Wards</div>
           </div>
           <table className="cr">
@@ -116,7 +121,7 @@ export function AdminDashboard() {
 
 function ConfigRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between border-b hairline pb-2">
+    <div className="flex flex-col gap-1 border-b hairline pb-2 sm:flex-row sm:items-center sm:justify-between">
       <span className="ink-mute">{label}</span>
       <span className="font-medium">{value}</span>
     </div>
@@ -282,7 +287,7 @@ export function AdminWards() {
           </>
         }
       >
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Ward name" required>
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
@@ -404,7 +409,7 @@ export function AdminUsers() {
           </>
         }
       >
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="First name" required><input className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} /></Field>
           <Field label="Last name" required><input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} /></Field>
           <Field label="Email" required><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
@@ -426,7 +431,7 @@ export function AdminUsers() {
               ))}
             </select>
           </Field>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <Field label="Temporary password" hint="At least 8 characters. User can change after first login.">
               <input className="input mono" type="text" value={password} onChange={(e) => setPassword(e.target.value)} />
             </Field>
@@ -438,12 +443,40 @@ export function AdminUsers() {
 }
 
 export function AdminShiftSchedules() {
+  const toast = useToast();
   const { data: schedules = [], isLoading } = useGetShiftSchedulesQuery();
+  const { data: wards = [] } = useGetWardsQuery();
+  const [createSchedule, { isLoading: isCreating }] = useCreateShiftScheduleMutation();
+  const [open, setOpen] = useState(false);
+  const [wardId, setWardId] = useState("");
+  const [shiftType, setShiftType] = useState("DAY");
+  const [startTime, setStartTime] = useState("07:00");
+  const [endTime, setEndTime] = useState("15:00");
+  const [daysOfWeek, setDaysOfWeek] = useState("MON,TUE,WED,THU,FRI");
+
+  async function submit() {
+    if (!shiftType || !startTime || !endTime || !daysOfWeek) {
+      toast({ kind: "error", title: "Fill all required fields" });
+      return;
+    }
+    try {
+      await createSchedule({ wardId: wardId || undefined, shiftType, startTime, endTime, daysOfWeek }).unwrap();
+      toast({ kind: "success", title: "Shift schedule created" });
+      setOpen(false);
+      setWardId("");
+      setShiftType("DAY");
+      setStartTime("07:00");
+      setEndTime("15:00");
+      setDaysOfWeek("MON,TUE,WED,THU,FRI");
+    } catch {
+      toast({ kind: "error", title: "Could not create shift schedule" });
+    }
+  }
 
   return (
     <div className="space-y-4">
       <PageHeader title="Shift schedules" subtitle="Templates that auto-generate ward shifts">
-        <button className="btn btn-primary">
+        <button className="btn btn-primary" onClick={() => setOpen(true)}>
           <Icons.plus size={14} />New schedule
         </button>
       </PageHeader>
@@ -465,7 +498,7 @@ export function AdminShiftSchedules() {
               {schedules.map((s) => (
                 <tr key={s.id}>
                   <td className="font-medium">{s.shiftType}</td>
-                  <td className="ink-2">{s.wardId || "All wards"}</td>
+                  <td className="ink-2">{s.wardId ? wards.find((w) => w.id === s.wardId)?.name || s.wardId : "All wards"}</td>
                   <td className="ink-2">{s.daysOfWeek}</td>
                   <td className="mono">{s.startTime}–{s.endTime}</td>
                   <td>
@@ -479,19 +512,97 @@ export function AdminShiftSchedules() {
           </table>
         </div>
       )}
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="New shift schedule"
+        footer={
+          <>
+            <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={submit} disabled={isCreating}>
+              {isCreating ? "Creating..." : "Create"}
+            </button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Ward">
+            <select className="select" value={wardId} onChange={(e) => setWardId(e.target.value)}>
+              <option value="">All wards</option>
+              {wards.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Shift type" required>
+            <select className="select" value={shiftType} onChange={(e) => setShiftType(e.target.value)}>
+              <option>DAY</option>
+              <option>NIGHT</option>
+            </select>
+          </Field>
+          <Field label="Start time" required>
+            <input className="input mono" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          </Field>
+          <Field label="End time" required>
+            <input className="input mono" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Days of week" required hint="Comma-separated: MON,TUE,WED">
+              <input className="input mono" value={daysOfWeek} onChange={(e) => setDaysOfWeek(e.target.value)} />
+            </Field>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 export function AdminOnCall() {
+  const toast = useToast();
   const { data: departments = [] } = useGetDepartmentsQuery();
   const { data: onCall = [], isLoading } = useGetOnCallRotationsQuery();
   const { data: users = [] } = useGetUsersQuery();
+  const { data: wards = [] } = useGetWardsQuery();
+  const [createRotation, { isLoading: isCreating }] = useCreateOnCallRotationMutation();
+  const [open, setOpen] = useState(false);
+  const [departmentId, setDepartmentId] = useState("");
+  const [wardId, setWardId] = useState("");
+  const [doctorId, setDoctorId] = useState("");
+  const [role, setRole] = useState("REGISTRAR_ON_CALL");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+
+  async function submit() {
+    if (!departmentId || !doctorId || !role || !startTime || !endTime) {
+      toast({ kind: "error", title: "Fill all required fields" });
+      return;
+    }
+    try {
+      await createRotation({
+        departmentId,
+        wardId: wardId || undefined,
+        doctorId,
+        role,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date(endTime).toISOString()
+      }).unwrap();
+      toast({ kind: "success", title: "On-call rotation created" });
+      setOpen(false);
+      setDepartmentId("");
+      setWardId("");
+      setDoctorId("");
+      setRole("REGISTRAR_ON_CALL");
+      setStartTime("");
+      setEndTime("");
+    } catch {
+      toast({ kind: "error", title: "Could not create on-call rotation" });
+    }
+  }
 
   return (
     <div className="space-y-4">
       <PageHeader title="On-call rotations" subtitle="Current and scheduled on-call assignments">
-        <button className="btn btn-primary">
+        <button className="btn btn-primary" onClick={() => setOpen(true)}>
           <Icons.plus size={14} />New rotation
         </button>
       </PageHeader>
@@ -527,18 +638,113 @@ export function AdminOnCall() {
           </table>
         </div>
       )}
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="New on-call rotation"
+        width={620}
+        footer={
+          <>
+            <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={submit} disabled={isCreating}>
+              {isCreating ? "Creating..." : "Create"}
+            </button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Department" required>
+            <select className="select" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+              <option value="">Select...</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Ward">
+            <select className="select" value={wardId} onChange={(e) => setWardId(e.target.value)}>
+              <option value="">All wards</option>
+              {wards.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Role" required>
+            <select className="select" value={role} onChange={(e) => setRole(e.target.value)}>
+              <option>REGISTRAR_ON_CALL</option>
+              <option>CONSULTANT_ON_CALL</option>
+            </select>
+          </Field>
+          <Field label="Doctor" required>
+            <select className="select" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
+              <option value="">Select...</option>
+              {users.filter((u) => ["REGISTRAR", "CONSULTANT"].includes(u.role)).map((u) => (
+                <option key={u.id} value={u.id}>{userFullName(u)} - {u.role}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Start" required>
+            <input className="input mono" type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          </Field>
+          <Field label="End" required>
+            <input className="input mono" type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          </Field>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 export function AdminTeamAssignment() {
+  const toast = useToast();
   const { data: teams = [], isLoading } = useGetTeamsQuery();
   const { data: departments = [] } = useGetDepartmentsQuery();
   const { data: users = [] } = useGetUsersQuery();
+  const { data: wards = [] } = useGetWardsQuery();
+  const [createTeam, { isLoading: isCreating }] = useCreateTeamMutation();
+  const [assignWard, { isLoading: isAssigning }] = useAssignWardToTeamMutation();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [consultantId, setConsultantId] = useState("");
+  const [wardAssignments, setWardAssignments] = useState<Record<string, string>>({});
+
+  async function submit() {
+    if (!name || !departmentId) {
+      toast({ kind: "error", title: "Team name and department are required" });
+      return;
+    }
+    try {
+      await createTeam({ name, departmentId, consultantId: consultantId || undefined }).unwrap();
+      toast({ kind: "success", title: "Medical team created" });
+      setOpen(false);
+      setName("");
+      setDepartmentId("");
+      setConsultantId("");
+    } catch {
+      toast({ kind: "error", title: "Could not create medical team" });
+    }
+  }
+
+  async function assign(teamId: string) {
+    const wardId = wardAssignments[teamId];
+    if (!wardId) return;
+    try {
+      await assignWard({ teamId, wardId }).unwrap();
+      toast({ kind: "success", title: "Ward assigned to team" });
+      setWardAssignments({ ...wardAssignments, [teamId]: "" });
+    } catch {
+      toast({ kind: "error", title: "Could not assign ward" });
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Medical teams" subtitle="Clinical firms within departments" />
+      <PageHeader title="Medical teams" subtitle="Clinical firms within departments">
+        <button className="btn btn-primary" onClick={() => setOpen(true)}>
+          <Icons.plus size={14} />New team
+        </button>
+      </PageHeader>
       {isLoading ? (
         <div className="panel rounded p-8 text-center ink-mute">Loading teams…</div>
       ) : (
@@ -546,6 +752,11 @@ export function AdminTeamAssignment() {
           {teams.map((t) => {
             const cons = t.consultantId ? getUser(users, t.consultantId) : undefined;
             const dept = getDept(departments, t.departmentId);
+            const assignedWardIds = t.wardIds || [];
+            const assignedWards = assignedWardIds.map((wardId) => ({
+              id: wardId,
+              name: wards.find((ward) => ward.id === wardId)?.name || wardId
+            }));
             return (
               <div key={t.id} className="panel rounded">
                 <div className="px-4 py-3 border-b hairline">
@@ -557,11 +768,77 @@ export function AdminTeamAssignment() {
                 <div className="p-4 text-xs ink-mute">
                   Member list is managed via team invites.
                 </div>
+                <div className="px-4 pb-4 space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <select
+                      className="select"
+                      value={wardAssignments[t.id] || ""}
+                      onChange={(e) => setWardAssignments({ ...wardAssignments, [t.id]: e.target.value })}
+                    >
+                      <option value="">Assign ward...</option>
+                      {wards.map((w) => (
+                        <option key={w.id} value={w.id}>{w.name}</option>
+                      ))}
+                    </select>
+                    <button className="btn" disabled={!wardAssignments[t.id] || isAssigning} onClick={() => assign(t.id)}>
+                      Assign
+                    </button>
+                  </div>
+                  <div>
+                    <div className="field-label mb-2">Assigned wards</div>
+                    {assignedWardIds.length === 0 ? (
+                      <div className="text-xs ink-mute">No wards assigned.</div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {assignedWards.map((ward) => (
+                          <span key={ward.id} className="chip bg-slate-100 text-slate-700">
+                            {ward.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             );
           })}
         </div>
       )}
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="New medical team"
+        footer={
+          <>
+            <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={submit} disabled={isCreating}>
+              {isCreating ? "Creating..." : "Create"}
+            </button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 gap-4">
+          <Field label="Team name" required>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label="Department" required>
+            <select className="select" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+              <option value="">Select...</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Consultant">
+            <select className="select" value={consultantId} onChange={(e) => setConsultantId(e.target.value)}>
+              <option value="">Unassigned</option>
+              {users.filter((u) => u.role === "CONSULTANT").map((u) => (
+                <option key={u.id} value={u.id}>{userFullName(u)}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -570,7 +847,12 @@ export function AdminHospital() {
   const toast = useToast();
   const { data: hospital } = useGetMyHospitalQuery();
   const { data: config } = useGetSystemConfigQuery();
+  const [updateHospital, { isLoading: isSavingHospital }] = useUpdateMyHospitalMutation();
   const [updateConfig, { isLoading: isSaving }] = useUpdateSystemConfigMutation();
+  const [hospitalName, setHospitalName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [amber, setAmber] = useState<number | undefined>(undefined);
   const [red, setRed] = useState<number | undefined>(undefined);
   const [grace, setGrace] = useState<number | undefined>(undefined);
@@ -578,6 +860,28 @@ export function AdminHospital() {
   const amberVal = amber ?? config?.newsAmberThreshold ?? 5;
   const redVal = red ?? config?.newsRedThreshold ?? 7;
   const graceVal = grace ?? config?.taskOverdueGraceMinutes ?? 15;
+  const hospitalNameVal = hospitalName || hospital?.name || "";
+  const contactEmailVal = contactEmail || hospital?.contactEmail || "";
+  const contactPhoneVal = contactPhone || hospital?.contactPhone || "";
+  const addressVal = address || hospital?.address || "";
+
+  async function saveHospital() {
+    try {
+      await updateHospital({
+        name: hospitalNameVal,
+        contactEmail: contactEmailVal,
+        contactPhone: contactPhoneVal,
+        address: addressVal
+      }).unwrap();
+      setHospitalName("");
+      setContactEmail("");
+      setContactPhone("");
+      setAddress("");
+      toast({ kind: "success", title: "Hospital details saved" });
+    } catch {
+      toast({ kind: "error", title: "Could not save hospital details" });
+    }
+  }
 
   async function save() {
     try {
@@ -598,13 +902,17 @@ export function AdminHospital() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="panel rounded p-4 space-y-4">
           <h3 className="font-semibold text-sm">Hospital information</h3>
-          <Field label="Hospital name"><input className="input" value={hospital?.name || ""} readOnly /></Field>
-          <Field label="Contact email"><input className="input" value={hospital?.contactEmail || ""} readOnly /></Field>
-          <Field label="Address"><input className="input" value={hospital?.address || ""} readOnly /></Field>
+          <Field label="Hospital name"><input className="input" value={hospitalNameVal} onChange={(event) => setHospitalName(event.target.value)} /></Field>
+          <Field label="Contact email"><input className="input" value={contactEmailVal} onChange={(event) => setContactEmail(event.target.value)} /></Field>
+          <Field label="Contact phone"><input className="input" value={contactPhoneVal} onChange={(event) => setContactPhone(event.target.value)} /></Field>
+          <Field label="Address"><input className="input" value={addressVal} onChange={(event) => setAddress(event.target.value)} /></Field>
+          <button className="btn btn-primary" onClick={saveHospital} disabled={isSavingHospital}>
+            {isSavingHospital ? "Saving..." : "Save hospital details"}
+          </button>
         </div>
         <div className="panel rounded p-4 space-y-4">
           <h3 className="font-semibold text-sm">NEWS thresholds and escalation</h3>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Amber threshold" hint="Escalates to registrar">
               <input className="input mono" type="number" value={amberVal} onChange={(e) => setAmber(Number(e.target.value))} />
             </Field>

@@ -24,7 +24,10 @@ export const api = createApi({
     "Hospital",
     "SystemConfig",
     "Dashboard",
-    "Me"
+    "Me",
+    "Notifications",
+    "Reports",
+    "Search"
   ],
   endpoints: () => ({})
 });

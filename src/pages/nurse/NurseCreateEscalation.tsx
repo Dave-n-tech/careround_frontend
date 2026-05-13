@@ -20,17 +20,17 @@ export default function NurseCreateEscalation() {
   const { data: latestVitals } = useGetLatestVitalsQuery(pid, { skip: !pid });
 
   if (isLoadingPatients) {
-    return <div className="panel rounded p-12 text-center ink-mute">Loading patients…</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">Loading patients…</div>;
   }
   if (!patient) {
-    return <div className="panel rounded p-12 text-center ink-mute">No patients on this ward.</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">No patients on this ward.</div>;
   }
 
   return (
     <div className="space-y-4">
       <PageHeader title="Raise nurse concern" subtitle="Create an AMBER escalation routed to the on-call registrar" />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="col-span-2 panel rounded p-5 space-y-4">
+        <div className="panel rounded p-4 space-y-4 sm:p-5 lg:col-span-2">
           <Field label="Patient" required>
             <select className="select" value={pid} onChange={(e) => setPid(e.target.value)}>
               {patients.map((p) => (
@@ -52,7 +52,7 @@ export default function NurseCreateEscalation() {
           </div>
           <div className="flex justify-end pt-2">
             <button
-              className="btn btn-primary"
+              className="btn btn-primary w-full sm:w-auto"
               disabled={isLoading || !notes.trim()}
               onClick={async () => {
                 await createEscalation({

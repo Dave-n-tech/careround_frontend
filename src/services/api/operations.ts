@@ -1,9 +1,10 @@
 import { api } from "./baseApi";
-import type { Shift, ShiftSchedule, OnCallRotation, Handover, PatientHandoverNote } from "@/types/domain";
+import type { Shift, ShiftSchedule, OnCallRotation, Handover, PatientHandoverNote, ShiftStatus } from "@/types/domain";
 
 // ─── Shifts ──────────────────────────────────────────────────────────────────
 
 export type AssignStaffRequest = { leadDoctorId: string; nurseInChargeId: string };
+export type GetShiftsRequest = { wardId: string; status?: ShiftStatus; from?: string; to?: string };
 
 // ─── Shift Schedules ─────────────────────────────────────────────────────────
 
@@ -47,6 +48,16 @@ export type CompleteHandoverRequest = { generalNotes?: string };
 const opsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     // Shifts
+    getShifts: builder.query<Shift[], GetShiftsRequest>({
+      query: ({ wardId, status, from, to }) => {
+        const params = new URLSearchParams({ wardId });
+        if (status) params.set("status", status);
+        if (from) params.set("from", from);
+        if (to) params.set("to", to);
+        return `/shifts?${params.toString()}`;
+      },
+      providesTags: ["Shifts"]
+    }),
     getCurrentShift: builder.query<Shift, string>({
       query: (wardId) => `/shifts/current/${wardId}`,
       providesTags: ["Shifts"]
@@ -121,6 +132,7 @@ const opsApi = api.injectEndpoints({
 });
 
 export const {
+  useGetShiftsQuery,
   useGetCurrentShiftQuery,
   useAssignShiftMutation,
   useGetShiftSchedulesQuery,

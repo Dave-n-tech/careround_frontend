@@ -9,11 +9,26 @@ export type UpdateSystemConfigRequest = {
   nokNotificationEnabled?: boolean;
 };
 
+export type UpdateHospitalRequest = {
+  name?: string;
+  address?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+};
+
 const hospitalApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getMyHospital: builder.query<Hospital, void>({
       query: () => "/hospitals/me",
       providesTags: ["Hospital"]
+    }),
+    getHospitals: builder.query<Hospital[], void>({
+      query: () => "/hospitals",
+      providesTags: ["Hospital"]
+    }),
+    updateMyHospital: builder.mutation<Hospital, UpdateHospitalRequest>({
+      query: (body) => ({ url: "/hospitals/me", method: "PUT", body }),
+      invalidatesTags: ["Hospital"]
     }),
     getSystemConfig: builder.query<SystemConfig, void>({
       query: () => "/system-config",
@@ -53,6 +68,8 @@ const hospitalApi = api.injectEndpoints({
 
 export const {
   useGetMyHospitalQuery,
+  useGetHospitalsQuery,
+  useUpdateMyHospitalMutation,
   useGetSystemConfigQuery,
   useUpdateSystemConfigMutation,
   useGetDashboardMeQuery,

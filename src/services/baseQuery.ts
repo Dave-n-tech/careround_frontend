@@ -4,9 +4,7 @@ import {
   type FetchArgs,
   type FetchBaseQueryError
 } from "@reduxjs/toolkit/query/react";
-import { mockBaseQuery } from "./mockBaseQuery";
 
-const useMocks = import.meta.env.VITE_USE_MOCKS === "true";
 const apiBaseUrl =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1";
 
@@ -14,6 +12,7 @@ type BackendEnvelope<T> = {
   data?: T;
   message?: string;
   status?: number;
+  success?: boolean;
 };
 
 const isEnvelope = (value: unknown): value is BackendEnvelope<unknown> =>
@@ -37,7 +36,7 @@ const baseQueryWithEnvelope: BaseQueryFn<
 > = async (args, api, extraOptions) => {
   const result = await realBaseQuery(args, api, extraOptions);
   if (!result.error && "data" in result && isEnvelope(result.data)) {
-    return { ...result, data: result.data.data ?? result.data };
+    return { ...result, data: result.data.data };
   }
   return result;
 };
@@ -100,4 +99,4 @@ const baseQueryWithReauth: BaseQueryFn<
   return result;
 };
 
-export const baseQuery = useMocks ? mockBaseQuery : baseQueryWithReauth;
+export const baseQuery = baseQueryWithReauth;

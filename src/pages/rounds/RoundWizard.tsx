@@ -156,12 +156,12 @@ export default function RoundWizard() {
   const stepNames = ["Setup", "Confirm and start", "Patient queue", "Review", "Post-round tasks", "Complete"];
 
   if (isLoadingPatients) {
-    return <div className="panel rounded p-12 text-center ink-mute">Loading ward patients…</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">Loading ward patients…</div>;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">Conduct ward round</h1>
           <p className="text-xs ink-mute">Step {step + 1} of 6 · {stepNames[step]}</p>
@@ -189,7 +189,7 @@ export default function RoundWizard() {
 function Step0({ round, setRound, onNext }: { round: RoundDraft; setRound: RoundStateSetter; onNext: () => void }) {
   const { data: users = [] } = useGetUsersQuery();
   return (
-    <div className="panel rounded p-6 space-y-5 max-w-3xl">
+    <div className="panel rounded p-4 space-y-5 max-w-3xl sm:p-6">
       <div>
         <h2 className="text-lg font-semibold">Round setup</h2>
         <p className="text-sm ink-mute mt-1">Configure who is on the round and what type it is.</p>
@@ -228,7 +228,7 @@ function Step0({ round, setRound, onNext }: { round: RoundDraft; setRound: Round
           ))}
         </div>
       </div>
-      <div className="flex justify-end"><button className="btn btn-primary" onClick={onNext} disabled={!round.leadId}>Continue →</button></div>
+      <div className="flex justify-end"><button className="btn btn-primary w-full sm:w-auto" onClick={onNext} disabled={!round.leadId}>Continue →</button></div>
     </div>
   );
 }
@@ -239,7 +239,7 @@ function Step1({ round, onBack, onNext, patients }: { round: RoundDraft; onBack:
     .filter((p): p is Patient => Boolean(p));
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div className="col-span-2 panel rounded">
+      <div className="panel rounded lg:col-span-2">
         <div className="px-4 py-3 border-b hairline">
           <div className="font-semibold">Patient queue (auto-ordered)</div>
           <div className="text-xs ink-mute">By acuity DESC then NEWS DESC</div>
@@ -283,8 +283,8 @@ function Step2({ round, onBack, onReview, onComplete, patients }: { round: Round
   const reviewedCount = Object.keys(round.reviewed).length;
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div className="col-span-2 panel rounded">
-        <div className="px-4 py-3 border-b hairline flex items-center justify-between">
+      <div className="panel rounded lg:col-span-2">
+        <div className="px-4 py-3 border-b hairline flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="font-semibold">Patient queue</div>
             <div className="text-xs ink-mute">Tap a patient to review</div>
@@ -379,7 +379,7 @@ function Step3({ round, setRound, onBack, onNext, patients, role }: { round: Rou
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div className="col-span-2 panel rounded p-5 space-y-4">
+      <div className="panel rounded p-4 space-y-4 sm:p-5 lg:col-span-2">
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <div className="flex items-center gap-2">
@@ -408,7 +408,7 @@ function Step3({ round, setRound, onBack, onNext, patients, role }: { round: Rou
               <option value="CRITICAL">CRITICAL</option>
             </select>
           </Field>
-          <div className="col-span-2">
+          <div className="md:col-span-2">
             <Field label="Patient examined?">
               <div className="flex gap-2">
                 <button onClick={() => setForm({ ...form, wasExamined: true })} className={`btn ${form.wasExamined ? "btn-primary" : ""}`}>Yes</button>
@@ -416,7 +416,7 @@ function Step3({ round, setRound, onBack, onNext, patients, role }: { round: Rou
               </div>
             </Field>
           </div>
-          <div className="col-span-2">
+          <div className="md:col-span-2">
             <Field label="Management plan" required>
               <textarea
                 className="textarea"
@@ -449,7 +449,7 @@ function Step3({ round, setRound, onBack, onNext, patients, role }: { round: Rou
           </Field>
         </div>
 
-        <div className="flex items-center justify-between pt-3 border-t hairline">
+        <div className="flex flex-col gap-2 pt-3 border-t hairline sm:flex-row sm:items-center sm:justify-between">
           <button className="btn" onClick={onBack}>← Back to queue</button>
           <button
             className="btn btn-primary"
@@ -514,7 +514,7 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div className="col-span-2 panel rounded p-5 space-y-4">
+      <div className="panel rounded p-4 space-y-4 sm:p-5 lg:col-span-2">
         <div>
           <h2 className="text-lg font-semibold">Post-round tasks for {patientFullName(p)}</h2>
           <p className="text-sm ink-mute">Source POST_ROUND_JOB.</p>
@@ -522,7 +522,7 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
 
         <div className="space-y-2">
           {tasks.map((t) => (
-            <div key={t.id} className="border hairline rounded p-3 flex items-center gap-3">
+            <div key={t.id} className="border hairline rounded p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
               <PriorityChip priority={t.priority} />
               <div className="flex-1">
                 <div className="text-sm font-semibold">{t.title}</div>
@@ -535,7 +535,7 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
         <div className="border hairline rounded p-3 bg-slate-50">
           <div className="field-label mb-2">+ Add task</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="col-span-2"><input className="input" placeholder="Task title" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></div>
+            <div className="md:col-span-2"><input className="input" placeholder="Task title" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></div>
             <select className="select" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value as TaskPriority })}>
               <option>ROUTINE</option><option>URGENT</option><option>EMERGENCY</option>
             </select>
@@ -550,7 +550,7 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
           </div>
         </div>
 
-        <div className="flex justify-between pt-3 border-t hairline">
+        <div className="flex flex-col gap-2 pt-3 border-t hairline sm:flex-row sm:justify-between">
           <button className="btn" onClick={onBack}>← Back to review</button>
           <button className="btn btn-primary" onClick={onNextPatient}>Next patient →</button>
         </div>
@@ -588,7 +588,7 @@ function Step5({ round, onBack, onComplete, patients }: { round: RoundDraft; onB
   const unreviewed = round.queue.filter((id) => !round.reviewed[id]);
   const totalTasks = Object.values(round.tasks).reduce((a, b) => a + b.length, 0);
   return (
-    <div className="panel rounded p-6 max-w-3xl space-y-5">
+    <div className="panel rounded p-4 max-w-3xl space-y-5 sm:p-6">
       <div>
         <h2 className="text-lg font-semibold">Complete round — review summary</h2>
         <p className="text-sm ink-mute mt-1">Final check before publishing the round.</p>
@@ -609,7 +609,7 @@ function Step5({ round, onBack, onComplete, patients }: { round: RoundDraft; onB
           </ul>
         </div>
       )}
-      <div className="flex justify-between pt-3 border-t hairline">
+      <div className="flex flex-col gap-2 pt-3 border-t hairline sm:flex-row sm:justify-between">
         <button className="btn" onClick={onBack}>← Back to queue</button>
         <button className="btn btn-primary px-6" onClick={onComplete}>Complete round</button>
       </div>

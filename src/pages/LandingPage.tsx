@@ -38,18 +38,18 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[var(--cr-bg)] text-[var(--cr-ink)]">
       <header className="absolute left-0 right-0 top-0 z-20">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-5 lg:px-8">
           <Link to="/" className="flex items-center gap-2.5 text-white">
             <span className="flex h-9 w-9 items-center justify-center rounded bg-white/15">
               <Icons.hospital size={20} />
             </span>
             <span className="text-lg font-semibold">CareRound</span>
           </Link>
-          <nav className="flex items-center gap-2">
-            <Link to="/login" className="btn border-white/25 bg-white/10 text-white hover:bg-white/20">
+          <nav className="flex items-center gap-1.5 sm:gap-2">
+            <Link to="/login" className="btn border-white/25 bg-white/10 px-3 text-white hover:bg-white/20 sm:px-4">
               Sign in
             </Link>
-            <Link to="/signup" className="btn btn-primary border-white bg-white text-[var(--cr-brand-ink)] hover:bg-slate-100">
+            <Link to="/signup" className="btn btn-primary border-white bg-white px-3 text-[var(--cr-brand-ink)] hover:bg-slate-100 sm:px-4">
               Request access
             </Link>
           </nav>
@@ -58,12 +58,12 @@ export default function LandingPage() {
 
       <section className="relative min-h-[88vh] overflow-hidden bg-[var(--cr-brand-ink)] text-white">
         <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(8,63,116,0.96),rgba(11,92,171,0.88)),url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%221200%22 height=%22700%22 viewBox=%220 0 1200 700%22%3E%3Crect width=%221200%22 height=%22700%22 fill=%22%230b5cab%22/%3E%3Cg fill=%22none%22 stroke=%22%23ffffff%22 stroke-opacity=%220.13%22%3E%3Cpath d=%22M0 120h1200M0 240h1200M0 360h1200M0 480h1200M0 600h1200M160 0v700M320 0v700M480 0v700M640 0v700M800 0v700M960 0v700M1120 0v700%22/%3E%3C/g%3E%3C/svg%3E')]" />
-        <div className="relative z-10 mx-auto grid max-w-7xl grid-cols-1 gap-10 px-5 pb-16 pt-28 lg:grid-cols-[1.02fr_0.98fr] lg:px-8 lg:pb-20 lg:pt-32">
-          <div className="flex min-h-[560px] flex-col justify-center">
+        <div className="relative z-10 mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 pb-12 pt-24 sm:px-5 lg:grid-cols-[1.02fr_0.98fr] lg:px-8 lg:pb-20 lg:pt-32">
+          <div className="flex min-h-[500px] flex-col justify-center lg:min-h-[560px]">
             <div className="mb-5 inline-flex w-fit items-center gap-2 rounded border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-white/85">
               Multi-tenant digital ward management
             </div>
-            <h1 className="max-w-3xl text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight sm:text-4xl md:text-6xl">
               Safer ward rounds, clearer handovers, and real-time inpatient visibility.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-white/82 md:text-lg">
@@ -74,7 +74,7 @@ export default function LandingPage() {
                 Request hospital access
               </Link>
               <Link to="/login" className="btn border-white/25 bg-white/10 px-5 py-3 text-sm text-white hover:bg-white/20">
-                Sign in to demo
+                Sign in
               </Link>
             </div>
             <div className="mt-10 grid max-w-2xl grid-cols-2 gap-3 md:grid-cols-4">
@@ -89,7 +89,7 @@ export default function LandingPage() {
 
           <div className="flex items-center lg:min-h-[620px]">
             <div className="w-full overflow-hidden rounded border border-white/20 bg-white text-slate-900 shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-sm font-semibold">Soyinka Ward command view</div>
                   <div className="text-xs text-slate-500">OMTH Ikeja tenant · live clinical state</div>
@@ -110,7 +110,7 @@ export default function LandingPage() {
                 ))}
               </div>
               <div className="p-4">
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="text-sm font-semibold">Acuity queue</div>
                   <div className="text-xs text-slate-500">NEWS ordered</div>
                 </div>
@@ -121,13 +121,13 @@ export default function LandingPage() {
                     ["B-07", "Aminat Bello", "Sickle cell crisis", "NEWS 5", "HIGH", "bg-amber-50 text-amber-700"],
                     ["B-12", "Folake Adekunle", "DKA resolved", "NEWS 1", "LOW", "bg-emerald-50 text-emerald-700"]
                   ].map(([bed, name, diagnosis, news, acuity, tone]) => (
-                    <div key={bed} className="grid grid-cols-[54px_1fr_auto] items-center gap-3 rounded border border-slate-200 bg-white p-3">
+                    <div key={bed} className="grid grid-cols-[44px_1fr] items-center gap-3 rounded border border-slate-200 bg-white p-3 sm:grid-cols-[54px_1fr_auto]">
                       <div className="mono text-xs text-slate-500">{bed}</div>
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold">{name}</div>
                         <div className="truncate text-xs text-slate-500">{diagnosis}</div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="col-span-2 flex flex-wrap items-center gap-2 sm:col-span-1 sm:justify-end">
                         <span className={`chip ${tone}`}>{acuity}</span>
                         <span className="mono text-xs text-slate-500">{news}</span>
                       </div>
@@ -190,7 +190,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-5 py-16 lg:grid-cols-[1fr_auto] lg:px-8">
+      <section className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-16 sm:px-5 lg:grid-cols-[1fr_auto] lg:px-8">
         <div>
           <div className="field-label">Built for many hospitals</div>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight">Configure each hospital without mixing its data.</h2>
@@ -198,7 +198,7 @@ export default function LandingPage() {
             CareRound is designed around hospital tenancy from the start: tenant-scoped users, wards, medical teams, patient records, system settings, and audit-ready workflows.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Link to="/signup" className="btn btn-primary px-5 py-3 text-sm">
             Start onboarding
           </Link>

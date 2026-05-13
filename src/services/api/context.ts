@@ -18,7 +18,30 @@ export function useCurrentWardPatients() {
 
 export function useCurrentWardCareTasks() {
   const wardId = useCurrentWardId();
-  return useGetCareTasksByWardQuery(wardId ? { wardId } : skipToken);
+  const pending = useGetCareTasksByWardQuery(wardId ? { wardId, status: "PENDING" } : skipToken);
+  const inProgress = useGetCareTasksByWardQuery(wardId ? { wardId, status: "IN_PROGRESS" } : skipToken);
+  const overdue = useGetCareTasksByWardQuery(wardId ? { wardId, status: "OVERDUE" } : skipToken);
+  const completed = useGetCareTasksByWardQuery(wardId ? { wardId, status: "COMPLETED" } : skipToken);
+
+  return {
+    data: [
+      ...(pending.data || []),
+      ...(inProgress.data || []),
+      ...(overdue.data || []),
+      ...(completed.data || [])
+    ],
+    isLoading:
+      pending.isLoading ||
+      inProgress.isLoading ||
+      overdue.isLoading ||
+      completed.isLoading,
+    refetch: () => {
+      pending.refetch();
+      inProgress.refetch();
+      overdue.refetch();
+      completed.refetch();
+    }
+  };
 }
 
 export function useCurrentWardEscalations() {

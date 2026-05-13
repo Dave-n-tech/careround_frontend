@@ -16,7 +16,7 @@ export function PatientRow({
 }) {
   return (
     <div
-      className={`flex items-center gap-3 px-3 py-2.5 row-hover cursor-pointer border-b hairline ${
+      className={`flex items-center gap-2 px-3 py-2.5 row-hover cursor-pointer border-b hairline sm:gap-3 ${
         current ? "bg-blue-50" : ""
       }`}
       onClick={onClick}
@@ -35,9 +35,9 @@ export function PatientRow({
         <div className="text-[13.5px] font-semibold truncate">{patient.lastName.toUpperCase()}, {patient.firstName}</div>
         <div className="text-xs ink-mute truncate">{patient.gender} · {patient.primaryDiagnosis}</div>
       </div>
-      <AcuityBadge level={patient.acuityLevel} />
+      <span className="hidden sm:inline-flex"><AcuityBadge level={patient.acuityLevel} /></span>
       <NEWSBadge score={patient.newsScore} size="sm" />
-      <StatusChip status={patient.status} />
+      <span className="hidden md:inline-flex"><StatusChip status={patient.status} /></span>
       <Icons.chevron size={14} className="text-slate-400" />
     </div>
   );
@@ -105,7 +105,7 @@ export function EscalationCard({
         borderBottom: "1px solid var(--cr-line)"
       }}
     >
-      <div className="p-3.5 flex items-start gap-3">
+      <div className="p-3.5 flex flex-col gap-3 sm:flex-row sm:items-start">
         <div className="flex-shrink-0">
           <span className="chip" style={{ background: sevColor, color: "#fff" }}>
             {esc.severity}
@@ -134,7 +134,7 @@ export function EscalationCard({
             <StatusChip status={esc.status} />
           </div>
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap gap-1.5 sm:flex-col">
           {esc.status === "OPEN" && (
             <button className="btn" onClick={() => onAck?.(esc.id)}>
               Acknowledge
@@ -166,7 +166,7 @@ export function TaskCard({
   const overdue = task.status !== "COMPLETED" && task.windowEnd < currentTimeStr();
   const next = task.status === "PENDING" ? "Start" : task.status === "IN_PROGRESS" ? "Complete" : null;
   return (
-    <div className={`panel rounded p-3 flex items-center gap-3 ${overdue ? "border-l-4 border-l-red-600" : ""}`}>
+    <div className={`panel rounded p-3 flex flex-col gap-3 sm:flex-row sm:items-center ${overdue ? "border-l-4 border-l-red-600" : ""}`}>
       <div className="flex-shrink-0">
         <PriorityChip priority={task.priority} />
       </div>

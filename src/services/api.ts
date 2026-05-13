@@ -14,3 +14,6 @@ export * from "./api/operations";
 export * from "./api/hospital";
 export * from "./api/onboarding";
 export * from "./api/context";
+export * from "./api/notifications";
+export * from "./api/reports";
+export * from "./api/search";

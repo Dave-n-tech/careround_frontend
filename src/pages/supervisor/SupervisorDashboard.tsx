@@ -43,7 +43,7 @@ export default function SupervisorDashboard() {
   }, []);
 
   if (!ward) {
-    return <div className="panel rounded p-12 text-center ink-mute">No ward assigned.</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">No ward assigned.</div>;
   }
 
   const nowIso = new Date().toISOString();
@@ -54,7 +54,7 @@ export default function SupervisorDashboard() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{ward.name}</h1>
           <p className="ink-mute text-sm">{ward.specialty || "—"} · auto-refresh {POLL_MS / 1000}s</p>
@@ -96,8 +96,8 @@ export default function SupervisorDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="panel rounded col-span-2">
-          <div className="px-4 py-3 border-b hairline flex items-center justify-between">
+        <div className="panel rounded lg:col-span-2">
+          <div className="px-4 py-3 border-b hairline flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="font-semibold text-sm">Active patients · by acuity</div>
           </div>
           <table className="cr">

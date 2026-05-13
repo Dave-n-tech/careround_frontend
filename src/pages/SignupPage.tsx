@@ -41,7 +41,7 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen bg-[var(--cr-bg)]">
       <header className="border-b border-[var(--cr-line)] bg-white/90">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 lg:px-8">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-5 lg:px-8">
           <Link to="/" className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded bg-[var(--cr-brand)] text-white">
               <Icons.hospital size={20} />
@@ -52,10 +52,10 @@ export default function SignupPage() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-5 py-12 lg:grid-cols-[0.85fr_1.15fr] lg:px-8">
+      <main className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 py-8 sm:px-5 sm:py-12 lg:grid-cols-[0.85fr_1.15fr] lg:px-8">
         <section className="space-y-5">
           <div className="field-label">Hospital onboarding</div>
-          <h1 className="text-4xl font-semibold leading-tight tracking-tight">Bring CareRound to your hospital.</h1>
+          <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">Bring CareRound to your hospital.</h1>
           <p className="text-sm leading-6 ink-2">
             Tell us about your hospital, wards, and clinical teams. We will help configure your isolated tenant, demo the workflows, and prepare integration with your backend services.
           </p>
@@ -69,7 +69,7 @@ export default function SignupPage() {
           </div>
         </section>
 
-        <section className="panel rounded p-5">
+        <section className="panel rounded p-4 sm:p-5">
           {submitted ? (
             <div className="space-y-3 text-center py-8">
               <div className="text-emerald-700 text-3xl">✓</div>
@@ -127,7 +127,7 @@ export default function SignupPage() {
                 <p className="max-w-md text-xs leading-5 ink-mute">
                   This request does not create a shared public account. Each hospital is onboarded as its own tenant with isolated data and configuration.
                 </p>
-                <button className="btn btn-primary px-5 py-2.5" onClick={submit} disabled={isLoading}>
+                <button className="btn btn-primary w-full px-5 py-2.5 sm:w-auto" onClick={submit} disabled={isLoading}>
                   {isLoading ? "Submitting…" : "Submit request"}
                 </button>
               </div>

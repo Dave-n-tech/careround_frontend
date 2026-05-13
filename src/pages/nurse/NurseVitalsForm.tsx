@@ -5,11 +5,12 @@ import { PageHeader } from "@/layouts/PageHeader";
 import { useCreateEscalationMutation, useRecordVitalsMutation, useGetVitalsHistoryQuery, useCurrentWardPatients } from "@/services/api";
 import { computeNEWS } from "@/utils/news";
 import { patientFullName } from "@/utils/format";
-import { demoClock } from "@/utils/time";
 import { useToast } from "@/components/ui/Toast";
+import { useLiveClock } from "@/hooks/useLiveClock";
 
 export default function NurseVitalsForm() {
   const toast = useToast();
+  const clock = useLiveClock();
   const { data: patients = [], isLoading: isLoadingPatients } = useCurrentWardPatients();
   const [recordVitals, { isLoading: isRecording }] = useRecordVitalsMutation();
   const [createEscalation] = useCreateEscalationMutation();
@@ -20,6 +21,7 @@ export default function NurseVitalsForm() {
   const patient = patients.find((p) => p.id === patientId);
   const { data: vitalsHistory = [] } = useGetVitalsHistoryQuery({ patientId }, { skip: !patientId });
   const [v, setV] = useState({ resp: "", spo2: "", temp: "", sys: "", hr: "", cons: "ALERT" });
+  const [vitalsNote, setVitalsNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [escalation, setEscalation] = useState<null | { severity: "RED" | "AMBER"; score: number; role: string; name: string }>(null);
 
@@ -40,7 +42,8 @@ export default function NurseVitalsForm() {
       temperature: Number(v.temp),
       systolicBP: Number(v.sys),
       heartRate: Number(v.hr),
-      consciousnessLevel: v.cons
+      consciousnessLevel: v.cons,
+      note: vitalsNote.trim() || undefined
     }).unwrap();
     if (total >= 7) {
       await createEscalation({
@@ -62,6 +65,7 @@ export default function NurseVitalsForm() {
       toast({ kind: "success", title: "Vitals recorded", body: `NEWS ${total} · within range` });
       setTimeout(() => {
         setV({ resp: "", spo2: "", temp: "", sys: "", hr: "", cons: "ALERT" });
+        setVitalsNote("");
         setSubmitted(false);
       }, 600);
     }
@@ -71,6 +75,7 @@ export default function NurseVitalsForm() {
     setEscalation(null);
     setSubmitted(false);
     setV({ resp: "", spo2: "", temp: "", sys: "", hr: "", cons: "ALERT" });
+    setVitalsNote("");
   }
 
   const preview = useMemo(() => {
@@ -84,10 +89,10 @@ export default function NurseVitalsForm() {
   }, [total]);
 
   if (isLoadingPatients) {
-    return <div className="panel rounded p-12 text-center ink-mute">Loading ward patients…</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">Loading ward patients…</div>;
   }
   if (!patient) {
-    return <div className="panel rounded p-12 text-center ink-mute">No patients on this ward.</div>;
+    return <div className="panel rounded p-6 text-center ink-mute sm:p-12">No patients on this ward.</div>;
   }
   const lastVital = vitalsHistory[vitalsHistory.length - 1];
 
@@ -124,15 +129,15 @@ export default function NurseVitalsForm() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="col-span-2 panel rounded p-5 space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="panel rounded p-4 space-y-4 sm:p-5 lg:col-span-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="font-semibold">{patientFullName(patient)}</div>
               <div className="text-xs ink-mute">
                 {patient.hospitalNumber} · Bed {patient.bedNumber} · last NEWS {patient.newsScore} at {lastVital?.recordedAt?.slice(11, 16) || "-"}
               </div>
             </div>
-            <div className="text-xs ink-mute">Now: {demoClock.dateLabel} · {demoClock.timeValue}</div>
+            <div className="text-xs ink-mute">Now: {clock.dateLabel} · {clock.timeValue}</div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {presets.map((f) => (
@@ -166,9 +171,18 @@ export default function NurseVitalsForm() {
               </div>
             </Field>
           </div>
-          <div className="border-t hairline pt-4 flex items-center gap-3">
+          <Field label="Clinical note">
+            <textarea
+              className="textarea"
+              rows={3}
+              placeholder="Optional context saved with this vitals record"
+              value={vitalsNote}
+              onChange={(event) => setVitalsNote(event.target.value)}
+            />
+          </Field>
+          <div className="border-t hairline pt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <button className="btn" onClick={reset}>Clear</button>
-            <button className="btn btn-primary ml-auto px-6 py-2.5" disabled={!allFilled || isRecording} onClick={submit}>
+            <button className="btn btn-primary px-6 py-2.5 sm:ml-auto" disabled={!allFilled || isRecording} onClick={submit}>
               {submitted || isRecording ? "Submitting..." : "Record vitals"}
             </button>
           </div>
@@ -209,13 +223,13 @@ export default function NurseVitalsForm() {
       </div>
 
       {escalation && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center fadein">
-          <div className="bg-white rounded shadow-2xl w-[520px] overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 fadein sm:items-center">
+          <div className="max-h-[94vh] w-full max-w-[520px] overflow-y-auto rounded bg-white shadow-2xl">
             <div className={`p-5 ${escalation.severity === "RED" ? "bg-red-600" : "bg-amber-500"} text-white`}>
-              <div className="flex items-center gap-3">
+              <div className="flex items-start gap-3">
                 <Icons.alertCircle size={28} />
                 <div>
-                  <div className="text-2xl font-bold">{escalation.severity} ESCALATION RAISED</div>
+                  <div className="text-xl font-bold sm:text-2xl">{escalation.severity} ESCALATION RAISED</div>
                   <div className="text-sm opacity-90">NEWS {escalation.score} · {escalation.severity === "RED" ? "Patient marked DETERIORATING" : "Threshold breached"}</div>
                 </div>
               </div>
@@ -227,11 +241,11 @@ export default function NurseVitalsForm() {
                 <div className="font-semibold">{escalation.name}</div>
                 <div className="text-xs ink-mute mt-1">via SMS + in-app · expected response under 5 min</div>
               </div>
-              <Field label="Add a note (optional)"><textarea className="textarea" rows={3} placeholder="Anything else the on-call should know" /></Field>
+              <Field label="Vitals note"><textarea className="textarea" rows={3} value={vitalsNote} onChange={(event) => setVitalsNote(event.target.value)} /></Field>
             </div>
-            <div className="px-5 py-3 border-t hairline flex justify-end gap-2 bg-slate-50">
+            <div className="px-5 py-3 border-t hairline flex flex-col-reverse gap-2 bg-slate-50 sm:flex-row sm:justify-end">
               <button className="btn" onClick={reset}>Done</button>
-              <button className="btn btn-primary" onClick={reset}>Add note and close</button>
+              <button className="btn btn-primary" onClick={reset}>Close</button>
             </div>
           </div>
         </div>

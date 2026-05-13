@@ -154,6 +154,7 @@ export interface MedicalTeam {
   consultantId: string | null;
   departmentId: string;
   createdAt: string;
+  wardIds?: string[];
 }
 
 export interface TeamInvite {

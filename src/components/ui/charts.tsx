@@ -12,7 +12,7 @@ export function NEWSSparkline({ history, h = 42, w = 160 }: SparkProps) {
     .map((y, i) => `${i === 0 ? "M" : "L"}${i * stepX} ${h - (y / max) * h}`)
     .join(" ");
   return (
-    <svg width={w} height={h} className="block">
+    <svg width={w} height={h} className="block max-w-full">
       <line x1="0" y1={h - (5 / max) * h} x2={w} y2={h - (5 / max) * h} stroke="#fde68a" strokeDasharray="3 3" />
       <line x1="0" y1={h - (7 / max) * h} x2={w} y2={h - (7 / max) * h} stroke="#fca5a5" strokeDasharray="3 3" />
       <path d={path} stroke="#0b5cab" strokeWidth="1.6" fill="none" />
@@ -32,7 +32,7 @@ export function Donut({ pct, size = 56 }: DonutProps) {
   const r = (size - 8) / 2;
   const c = 2 * Math.PI * r;
   return (
-    <svg width={size} height={size}>
+    <svg width={size} height={size} className="shrink-0">
       <circle cx={size / 2} cy={size / 2} r={r} stroke="#e2e8f0" strokeWidth="6" fill="none" />
       <circle
         cx={size / 2}
@@ -60,9 +60,9 @@ type BarChartProps = {
 export function BarChart({ title, labels, values, values2, unit }: BarChartProps) {
   const max = Math.max(...values, ...(values2 || [0]));
   return (
-    <div>
+    <div className="overflow-x-auto scroll-thin">
       <h3 className="font-semibold text-sm mb-4">{title}</h3>
-      <div className="flex items-end gap-3 h-56 border-b hairline">
+      <div className="flex min-w-[560px] items-end gap-3 h-56 border-b hairline">
         {labels.map((label, i) => (
           <div key={label} className="flex-1 flex flex-col items-center justify-end gap-1">
             <div className="w-full flex gap-1 items-end" style={{ height: "100%" }}>
@@ -81,7 +81,7 @@ export function BarChart({ title, labels, values, values2, unit }: BarChartProps
           </div>
         ))}
       </div>
-      <div className="flex gap-3 mt-2">
+      <div className="flex min-w-[560px] gap-3 mt-2">
         {labels.map((label) => (
           <div key={label} className="flex-1 text-center text-[10px] ink-mute mono">
             {label}
