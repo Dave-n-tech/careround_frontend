@@ -1,19 +1,21 @@
 import { useState } from "react";
 import { Field, StatusChip } from "@/components/ui";
 import { PageHeader } from "@/layouts/PageHeader";
-import { useAssignShiftMutation, useGetShiftsQuery, useGetUsersQuery, useGetWardsQuery, useUpdateShiftStatusMutation } from "@/services/api";
+import { useAssignShiftMutation, useGetCurrentShiftQuery, useGetUsersQuery, useGetWardsQuery } from "@/services/api";
 import { getUser, getWard, userFullName } from "@/utils/format";
 import { useToast } from "@/components/ui/Toast";
 
 export default function ShiftAssignment() {
   const toast = useToast();
-  const { data: shifts = [] } = useGetShiftsQuery();
+  // For now, show shift for default ward w1
+  const { data: currentShift } = useGetCurrentShiftQuery("w1");
   const { data: wards = [] } = useGetWardsQuery();
   const { data: users = [] } = useGetUsersQuery();
   const [assignShift, { isLoading: isAssigning }] = useAssignShiftMutation();
-  const [updateShiftStatus] = useUpdateShiftStatusMutation();
   const [assignments, setAssignments] = useState<Record<string, { lead?: string; nurse?: string }>>({});
 
+  // Mock multiple shifts for display — in real app, fetch from shift schedules
+  const shifts = currentShift ? [currentShift] : [];
   const pending = shifts.filter((s) => s.status === "PENDING_ASSIGNMENT");
   const active = shifts.filter((s) => s.status === "ACTIVE");
 
@@ -28,7 +30,6 @@ export default function ShiftAssignment() {
       return;
     }
     await assignShift({ id: shiftId, leadDoctorId: a.lead, nurseInChargeId: a.nurse }).unwrap();
-    await updateShiftStatus({ id: shiftId, status: "ACTIVE" }).unwrap();
     toast({ kind: "success", title: "Shift activated", body: "Lead and nurse in charge notified" });
   }
 
@@ -50,8 +51,8 @@ export default function ShiftAssignment() {
             return (
               <div key={s.id} className="p-4 grid grid-cols-1 lg:grid-cols-[1fr_220px_220px_140px] gap-4 items-center">
                 <div>
-                  <div className="font-semibold text-sm">{s.name}</div>
-                  <div className="text-xs ink-mute">{w?.name} · {s.date}</div>
+                  <div className="font-semibold text-sm">{s.type} Shift</div>
+                  <div className="text-xs ink-mute">{w?.name} · {s.startTime?.slice(0, 10)}</div>
                   <div className="mt-1.5"><StatusChip status={s.status} /></div>
                 </div>
                 <Field label="Lead doctor">
@@ -94,7 +95,7 @@ export default function ShiftAssignment() {
           <tbody>
             {active.map((s) => (
               <tr key={s.id}>
-                <td className="font-medium">{s.name}</td>
+                <td className="font-medium">{s.type} Shift</td>
                 <td>{getWard(wards, s.wardId)?.name}</td>
                 <td>{getUser(users, s.leadDoctorId || "")?.firstName}</td>
                 <td>{getUser(users, s.nurseInChargeId || "")?.firstName}</td>

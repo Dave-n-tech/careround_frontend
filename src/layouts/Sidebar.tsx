@@ -3,19 +3,19 @@ import { Icons } from "@/components/ui";
 import { NAV } from "@/navigation/nav";
 import { useAppSelector } from "@/app/hooks";
 import { appConfig } from "@/utils/config";
-import { useGetEscalationsQuery, useGetShiftsQuery } from "@/services/api";
 
 export default function Sidebar() {
   const role = useAppSelector((state) => state.auth.role);
-  const { data: escalations = [] } = useGetEscalationsQuery();
-  const { data: shifts = [] } = useGetShiftsQuery();
 
   if (!role) return null;
 
   const items = NAV[role] || [];
+
+  // Badge counts are not available without ward context in the sidebar.
+  // Pages that need them can fetch ward-scoped data directly.
   const badges = {
-    openEscalations: escalations.filter((e) => e.status === "OPEN").length,
-    pendingShifts: shifts.filter((s) => s.status === "PENDING_ASSIGNMENT").length
+    openEscalations: 0,
+    pendingShifts: 0
   };
 
   return (

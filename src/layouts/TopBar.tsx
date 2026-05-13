@@ -17,7 +17,8 @@ export default function TopBar() {
 
   async function handleLogout() {
     try {
-      await logout().unwrap();
+      const refreshToken = localStorage.getItem("cr_refresh_token") || "";
+      await logout({ refreshToken }).unwrap();
     } catch {
       // ignore logout errors in demo mode
     }

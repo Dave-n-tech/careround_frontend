@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AcuityBadge,
@@ -14,54 +14,75 @@ import {
   TaskCard,
   useToast
 } from "@/components/ui";
-import { NEWSSparkline } from "@/components/ui/charts";
 import { PageHeader } from "@/layouts/PageHeader";
 import {
-  useGetCareTasksQuery,
+  useAcknowledgeEscalationMutation,
+  useAdmitPatientMutation,
+  useAmendNoteMutation,
+  useCreateClinicalNoteMutation,
+  useCurrentWardCareTasks,
+  useCurrentWardEscalations,
+  useCurrentWardPatients,
+  useCurrentWardRounds,
   useGetClinicalNotesByPatientQuery,
   useGetDepartmentsQuery,
-  useGetEscalationsQuery,
+  useGetLatestVitalsQuery,
   useGetOnCallRotationsQuery,
-  useGetPatientsQuery,
-  useGetRoundsQuery,
+  useGetPatientByIdQuery,
+  useGetPatientNextOfKinQuery,
+  useGetCareTasksByPatientQuery,
   useGetTeamsQuery,
   useGetUsersQuery,
+  useGetVitalsHistoryQuery,
   useGetWardsQuery,
-  useAcknowledgeEscalationMutation,
   useResolveEscalationMutation,
-  useUpdateCareTaskStatusMutation
+  useSendTeamInviteMutation,
+  useUpdateCareTaskStatus
 } from "@/services/api";
-import type { CareTask, ClinicalNote, Patient, Role } from "@/types/domain";
-import { getDept, getTeam, getUser, getWard, patientFullName, userFullName } from "@/utils/format";
+import { useCurrentWardId } from "@/features/ward/currentWard";
+import type { CareTask, ClinicalNote, NoteType, Patient, Role } from "@/types/domain";
+import { getUser, getWard, patientFullName, userFullName } from "@/utils/format";
 import { useAppSelector } from "@/app/hooks";
+
+const ACUITY_ORDER: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+
+function ageFromDob(dob: string | null | undefined): string {
+  if (!dob) return "—";
+  const birth = new Date(dob);
+  if (isNaN(birth.getTime())) return "—";
+  const ms = Date.now() - birth.getTime();
+  const years = Math.floor(ms / (365.25 * 24 * 60 * 60 * 1000));
+  return `${years}y`;
+}
 
 export function PatientListPage({ scope, title }: { scope: "team" | "ward"; title: string }) {
   const navigate = useNavigate();
   const currentUser = useAppSelector((state) => state.auth.user);
-  const { data: patients = [] } = useGetPatientsQuery();
+  const { data: patients = [], isLoading, isError, refetch } = useCurrentWardPatients();
   const { data: teams = [] } = useGetTeamsQuery();
-  const { data: users = [] } = useGetUsersQuery();
   const [filter, setFilter] = useState("ALL");
 
   const list = useMemo(() => {
     let filtered = patients;
-    if (scope === "team") {
-      const team = teams.find((t) => t.members.includes(currentUser?.id || "")) || teams[0];
-      if (team) filtered = patients.filter((p) => p.teamId === team.id);
+    if (scope === "team" && currentUser) {
+      const myTeam =
+        teams.find((t) => t.consultantId === currentUser.id) ||
+        teams.find((t) => t.departmentId === currentUser.departmentId);
+      if (myTeam) filtered = filtered.filter((p) => p.medicalTeamId === myTeam.id);
     }
-    if (scope === "ward") {
-      filtered = patients.filter((p) => p.wardId === "w1");
-    }
-    const order = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 } as const;
-    filtered = [...filtered].sort((a, b) => order[b.acuity] - order[a.acuity] || b.news - a.news);
+    filtered = [...filtered].sort(
+      (a, b) =>
+        (ACUITY_ORDER[b.acuityLevel] ?? 0) - (ACUITY_ORDER[a.acuityLevel] ?? 0) ||
+        (b.newsScore ?? 0) - (a.newsScore ?? 0)
+    );
     if (filter !== "ALL") filtered = filtered.filter((p) => p.status === filter);
     return filtered;
-  }, [patients, scope, teams, users, filter]);
+  }, [patients, scope, teams, filter, currentUser]);
 
   return (
     <div className="space-y-4">
-      <PageHeader title={title} subtitle={`${list.length} patients · Soyinka Ward · last updated 12s ago`}>
-        <button className="btn"><Icons.refresh size={14} />Refresh</button>
+      <PageHeader title={title} subtitle={`${list.length} patients`}>
+        <button className="btn" onClick={() => refetch()}><Icons.refresh size={14} />Refresh</button>
       </PageHeader>
       <div className="flex items-center gap-2 flex-wrap">
         {["ALL", "ADMITTED", "STABLE", "DETERIORATING", "DISCHARGE_READY"].map((s) => (
@@ -70,53 +91,53 @@ export function PatientListPage({ scope, title }: { scope: "team" | "ward"; titl
             <span className="ink-mute ml-1">{s === "ALL" ? patients.length : patients.filter((p) => p.status === s).length}</span>
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-2">
-          <div className="relative">
-            <input className="input pl-8" placeholder="Search MRN, name" style={{ width: 240 }} />
-            <Icons.search size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
-          </div>
+      </div>
+      {isLoading ? (
+        <div className="panel rounded p-12 text-center ink-mute">Loading patients…</div>
+      ) : isError ? (
+        <div className="panel rounded p-12 text-center text-red-700">Could not load patients. <button className="underline" onClick={() => refetch()}>Retry</button></div>
+      ) : list.length === 0 ? (
+        <div className="panel rounded p-12 text-center ink-mute">No patients match this filter.</div>
+      ) : (
+        <div className="panel rounded overflow-hidden">
+          <table className="cr">
+            <thead>
+              <tr>
+                <th className="w-20">Bed</th>
+                <th>Patient</th>
+                <th>MRN</th>
+                <th>Diagnosis</th>
+                <th>Acuity</th>
+                <th>NEWS</th>
+                <th>Status</th>
+                <th>Admitted</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((p) => {
+                const days = p.admissionDate ? Math.floor((Date.now() - new Date(p.admissionDate).getTime()) / 86400000) : 0;
+                return (
+                  <tr key={p.id} onClick={() => navigate(`./${p.id}`)} className="cursor-pointer">
+                    <td className="mono text-xs">{p.bedNumber || "—"}</td>
+                    <td className="font-semibold">
+                      {patientFullName(p)}
+                      <div className="text-xs ink-mute font-normal">{ageFromDob(p.dateOfBirth)} · {p.gender || "—"}</div>
+                    </td>
+                    <td className="mono text-xs ink-mute">{p.hospitalNumber}</td>
+                    <td className="ink-2 max-w-[280px] truncate">{p.primaryDiagnosis || "—"}</td>
+                    <td><AcuityBadge level={p.acuityLevel} /></td>
+                    <td><NEWSBadge score={p.newsScore} size="sm" /></td>
+                    <td><StatusChip status={p.status} /></td>
+                    <td className="mono text-xs">{days}d</td>
+                    <td><Icons.chevron size={14} className="text-slate-400" /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      </div>
-      <div className="panel rounded overflow-hidden">
-        <table className="cr">
-          <thead>
-            <tr>
-              <th className="w-20">Bed</th>
-              <th>Patient</th>
-              <th>MRN</th>
-              <th>Diagnosis</th>
-              <th>Acuity</th>
-              <th>NEWS</th>
-              <th>Trend</th>
-              <th>Status</th>
-              <th>LoS</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((p) => {
-              const days = Math.floor((Date.now() - new Date(p.admissionDate).getTime()) / 86400000);
-              return (
-                <tr key={p.id} onClick={() => navigate(`./${p.id}`)} className="cursor-pointer">
-                  <td className="mono text-xs">{p.bed}</td>
-                  <td className="font-semibold">
-                    {patientFullName(p)}
-                    <div className="text-xs ink-mute font-normal">{p.age}{p.sex}</div>
-                  </td>
-                  <td className="mono text-xs ink-mute">{p.mrn}</td>
-                  <td className="ink-2 max-w-[280px] truncate">{p.primaryDiagnosis}</td>
-                  <td><AcuityBadge level={p.acuity} /></td>
-                  <td><NEWSBadge score={p.news} size="sm" /></td>
-                  <td><NEWSSparkline history={p.vitals} w={100} h={24} /></td>
-                  <td><StatusChip status={p.status} /></td>
-                  <td className="mono text-xs">{days}d</td>
-                  <td><Icons.chevron size={14} className="text-slate-400" /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      )}
     </div>
   );
 }
@@ -124,23 +145,23 @@ export function PatientListPage({ scope, title }: { scope: "team" | "ward"; titl
 export function PatientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { data: patients = [] } = useGetPatientsQuery();
-  const patient = patients.find((p) => p.id === id);
+  const { data: patient, isLoading: isLoadingPatient, isError } = useGetPatientByIdQuery(id || "", { skip: !id });
   const { data: wards = [] } = useGetWardsQuery();
   const { data: teams = [] } = useGetTeamsQuery();
-  const { data: tasks = [] } = useGetCareTasksQuery();
+  const { data: tasks = [] } = useGetCareTasksByPatientQuery(id || "", { skip: !id });
   const { data: notes = [] } = useGetClinicalNotesByPatientQuery(id || "", { skip: !id });
 
   const [tab, setTab] = useState("overview");
 
-  if (!patient) {
+  if (isLoadingPatient) {
+    return <div className="panel rounded p-12 text-center ink-mute">Loading patient…</div>;
+  }
+  if (isError || !patient) {
     return <div className="panel rounded p-12 text-center ink-mute">Patient not found.</div>;
   }
 
   const ward = getWard(wards, patient.wardId);
-  const team = getTeam(teams, patient.teamId);
-  const patientTasks = tasks.filter((t) => t.patientId === patient.id);
-  const lastVital = patient.vitals[patient.vitals.length - 1];
+  const team = teams.find((t) => t.id === patient.medicalTeamId);
 
   return (
     <div className="space-y-4">
@@ -150,26 +171,22 @@ export function PatientDetailPage() {
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-semibold tracking-tight">{patientFullName(patient)}</h1>
-              <AcuityBadge level={patient.acuity} />
+              <AcuityBadge level={patient.acuityLevel} />
               <StatusChip status={patient.status} />
             </div>
             <div className="text-sm ink-mute mt-1 flex items-center gap-3 flex-wrap">
-              <span className="mono">{patient.mrn}</span><span>·</span>
-              <span>{patient.age}{patient.sex}</span><span>·</span>
-              <span>{ward?.name} · Bed {patient.bed}</span><span>·</span>
-              <span>Admitted {patient.admissionDate} ({patient.admissionType})</span><span>·</span>
-              <span>{team?.name}</span>
+              <span className="mono">{patient.hospitalNumber}</span><span>·</span>
+              <span>{ageFromDob(patient.dateOfBirth)} · {patient.gender || "—"}</span><span>·</span>
+              <span>{ward?.name || "Ward"} · Bed {patient.bedNumber || "—"}</span><span>·</span>
+              <span>Admitted {patient.admissionDate?.slice(0, 10) || "—"} ({patient.admissionType})</span>
+              {team && <><span>·</span><span>{team.name}</span></>}
             </div>
             <div className="mt-3 text-[14px]">
-              <span className="font-medium">Primary:</span> {patient.primaryDiagnosis}
-              {patient.secondary?.length ? (
-                <span className="ink-mute"> · Secondary: {patient.secondary.join(", ")}</span>
-              ) : null}
+              <span className="font-medium">Primary:</span> {patient.primaryDiagnosis || "—"}
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <NEWSBadge score={patient.news} size="lg" />
-            <span className="text-xs ink-mute">Latest at {lastVital?.ts.slice(11, 16)}</span>
+            <NEWSBadge score={patient.newsScore} size="lg" />
           </div>
         </div>
       </div>
@@ -188,39 +205,36 @@ export function PatientDetailPage() {
         ))}
       </div>
 
-      {tab === "overview" && <PatientOverview patient={patient} tasks={patientTasks} notes={notes} />}
-      {tab === "vitals" && <PatientVitalsTab patient={patient} />}
-      {tab === "notes" && <PatientNotesTab notes={notes} />}
-      {tab === "tasks" && <PatientTasksTab tasks={patientTasks} />}
-      {tab === "nok" && <PatientNoKTab patient={patient} />}
+      {tab === "overview" && <PatientOverview patient={patient} tasks={tasks} notes={notes} />}
+      {tab === "vitals" && <PatientVitalsTab patientId={patient.id} />}
+      {tab === "notes" && <PatientNotesTab patientId={patient.id} notes={notes} />}
+      {tab === "tasks" && <PatientTasksTab tasks={tasks} />}
+      {tab === "nok" && <PatientNoKTab patientId={patient.id} />}
     </div>
   );
 }
 
 function PatientOverview({ patient, tasks, notes }: { patient: Patient; tasks: CareTask[]; notes: ClinicalNote[] }) {
-  const v = patient.vitals[patient.vitals.length - 1];
+  const { data: latestVitals } = useGetLatestVitalsQuery(patient.id);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="col-span-2 space-y-4">
         <div className="panel rounded">
           <div className="px-4 py-3 border-b hairline flex justify-between">
             <span className="font-semibold text-sm">Latest vitals</span>
-            <span className="text-xs ink-mute">{v?.ts.slice(0, 16).replace("T", " ")}</span>
+            <span className="text-xs ink-mute">{latestVitals?.recordedAt?.slice(0, 16).replace("T", " ") || "no readings"}</span>
           </div>
-          {v && (
+          {latestVitals && (
             <div className="grid grid-cols-3 md:grid-cols-6 divide-x hairline">
-              <Vital label="Resp rate" v={v.resp} unit="/min" />
-              <Vital label="SpO2" v={v.spo2} unit="%" />
-              <Vital label="Temp" v={v.temp} unit="C" />
-              <Vital label="Sys BP" v={v.sys} unit="mmHg" />
-              <Vital label="Heart rate" v={v.hr} unit="bpm" />
-              <Vital label="LOC" v={v.cons} unit="" />
+              <Vital label="Resp rate" v={latestVitals.respiratoryRate} unit="/min" />
+              <Vital label="SpO2" v={latestVitals.oxygenSaturation} unit="%" />
+              <Vital label="Temp" v={latestVitals.temperature} unit="C" />
+              <Vital label="Sys BP" v={latestVitals.systolicBP} unit="mmHg" />
+              <Vital label="Heart rate" v={latestVitals.heartRate} unit="bpm" />
+              <Vital label="LOC" v={latestVitals.consciousnessLevel} unit="" />
             </div>
           )}
-        </div>
-        <div className="panel rounded">
-          <div className="px-4 py-3 border-b hairline font-semibold text-sm">NEWS trend (last 36h)</div>
-          <div className="p-4"><NEWSSparkline history={patient.vitals} w={680} h={120} /></div>
         </div>
         <div className="panel rounded">
           <div className="px-4 py-3 border-b hairline font-semibold text-sm">Recent clinical notes</div>
@@ -228,12 +242,15 @@ function PatientOverview({ patient, tasks, notes }: { patient: Patient; tasks: C
             {notes.slice(0, 3).map((n) => (
               <div key={n.id} className="p-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="chip" style={{ background: "#dbeafe", color: "#1e40af" }}>{n.type.replace(/_/g, " ")}</span>
-                  <span className="text-xs ink-mute">{n.createdAt}</span>
+                  <span className="chip" style={{ background: "#dbeafe", color: "#1e40af" }}>{n.noteType.replace(/_/g, " ")}</span>
+                  <span className="text-xs ink-mute">{n.createdAt?.slice(0, 16).replace("T", " ")}</span>
                 </div>
-                <p className="text-sm ink-2 leading-relaxed">{n.body}</p>
+                <p className="text-sm ink-2 leading-relaxed">{n.content}</p>
               </div>
             ))}
+            {notes.length === 0 && (
+              <div className="p-6 text-center ink-mute text-sm">No notes yet.</div>
+            )}
           </div>
         </div>
       </div>
@@ -247,81 +264,112 @@ function PatientOverview({ patient, tasks, notes }: { patient: Patient; tasks: C
                   <span className="font-medium">{t.title}</span>
                   <PriorityChip priority={t.priority} />
                 </div>
-                <div className="text-xs ink-mute mono mt-0.5">{t.windowStart}-{t.windowEnd}</div>
+                <div className="text-xs ink-mute mono mt-0.5">{t.windowStart}–{t.windowEnd}</div>
               </div>
             ))}
+            {tasks.filter((t) => t.status !== "COMPLETED").length === 0 && (
+              <div className="text-xs ink-mute">No open tasks.</div>
+            )}
           </div>
-        </div>
-        <div className="panel rounded p-4">
-          <div className="font-semibold text-sm mb-2">Next of kin</div>
-          {patient.nok.map((n, i) => (
-            <div key={i} className="text-sm">
-              <div className="font-medium">{n.name} <span className="ink-mute font-normal">· {n.relation}</span></div>
-              <div className="ink-2 mono text-xs">{n.phone}</div>
-              <div className="text-xs ink-mute mt-1">Notify via {n.method} · {n.consent ? "consent given" : "no consent"}</div>
-            </div>
-          ))}
         </div>
       </div>
     </div>
   );
 }
 
-function Vital({ label, v, unit }: { label: string; v: number | string; unit: string }) {
+function Vital({ label, v, unit }: { label: string; v: number | string | undefined | null; unit: string }) {
   return (
     <div className="p-4">
       <div className="field-label">{label}</div>
       <div className="text-2xl font-semibold mt-1">
-        {v}
+        {v ?? "—"}
         <span className="text-sm ink-mute font-normal ml-1">{unit}</span>
       </div>
     </div>
   );
 }
 
-function PatientVitalsTab({ patient }: { patient: Patient }) {
+function PatientVitalsTab({ patientId }: { patientId: string }) {
+  const { data: history = [], isLoading } = useGetVitalsHistoryQuery({ patientId });
+
   return (
     <div className="panel rounded">
       <div className="px-4 py-3 border-b hairline flex items-center justify-between">
         <div className="font-semibold text-sm">Vitals history</div>
-        <span className="text-xs ink-mute">{patient.vitals.length} recordings</span>
+        <span className="text-xs ink-mute">{history.length} recordings</span>
       </div>
-      <table className="cr">
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>RR</th>
-            <th>SpO2</th>
-            <th>Temp</th>
-            <th>Sys BP</th>
-            <th>HR</th>
-            <th>LOC</th>
-            <th>NEWS</th>
-          </tr>
-        </thead>
-        <tbody>
-          {[...patient.vitals].reverse().map((v, i) => (
-            <tr key={i}>
-              <td className="mono text-xs">{v.ts.slice(0, 16).replace("T", " ")}</td>
-              <td className="mono">{v.resp}</td>
-              <td className="mono">{v.spo2}</td>
-              <td className="mono">{v.temp}</td>
-              <td className="mono">{v.sys}</td>
-              <td className="mono">{v.hr}</td>
-              <td>{v.cons}</td>
-              <td><NEWSBadge score={v.news} size="sm" /></td>
+      {isLoading ? (
+        <div className="p-8 text-center ink-mute">Loading vitals…</div>
+      ) : history.length === 0 ? (
+        <div className="p-8 text-center ink-mute">No vitals recorded.</div>
+      ) : (
+        <table className="cr">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>RR</th>
+              <th>SpO2</th>
+              <th>Temp</th>
+              <th>Sys BP</th>
+              <th>HR</th>
+              <th>LOC</th>
+              <th>NEWS</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {[...history].reverse().map((v) => (
+              <tr key={v.id}>
+                <td className="mono text-xs">{v.recordedAt?.slice(0, 16).replace("T", " ")}</td>
+                <td className="mono">{v.respiratoryRate}</td>
+                <td className="mono">{v.oxygenSaturation}</td>
+                <td className="mono">{v.temperature}</td>
+                <td className="mono">{v.systolicBP}</td>
+                <td className="mono">{v.heartRate}</td>
+                <td>{v.consciousnessLevel}</td>
+                <td><NEWSBadge score={v.newsScore} size="sm" /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
 
-function PatientNotesTab({ notes }: { notes: ClinicalNote[] }) {
+function PatientNotesTab({ patientId, notes }: { patientId: string; notes: ClinicalNote[] }) {
   const [open, setOpen] = useState(false);
   const toast = useToast();
   const { data: users = [] } = useGetUsersQuery();
+  const [createNote, { isLoading: isCreating }] = useCreateClinicalNoteMutation();
+  const [amendNote] = useAmendNoteMutation();
+  const [noteType, setNoteType] = useState<NoteType>("PROGRESS_NOTE");
+  const [content, setContent] = useState("");
+  const [amendOpen, setAmendOpen] = useState<{ id: string; original: string } | null>(null);
+  const [amendText, setAmendText] = useState("");
+
+  async function save() {
+    if (!content.trim()) return;
+    try {
+      await createNote({ patientId, noteType, content }).unwrap();
+      toast({ kind: "success", title: "Note saved" });
+      setOpen(false);
+      setContent("");
+    } catch {
+      toast({ kind: "error", title: "Could not save note" });
+    }
+  }
+
+  async function submitAmend() {
+    if (!amendOpen || !amendText.trim()) return;
+    try {
+      await amendNote({ noteId: amendOpen.id, content: amendText }).unwrap();
+      toast({ kind: "success", title: "Note amended" });
+      setAmendOpen(null);
+      setAmendText("");
+    } catch {
+      toast({ kind: "error", title: "Could not amend note" });
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -329,22 +377,24 @@ function PatientNotesTab({ notes }: { notes: ClinicalNote[] }) {
         <Icons.plus size={14} />New note
       </button>
       <div className="panel rounded divide-y hairline">
-        {notes.map((n) => (
-          <div key={n.id} className="p-4">
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="chip" style={{ background: "#dbeafe", color: "#1e40af" }}>{n.type.replace(/_/g, " ")}</span>
-              <span className="text-sm font-medium">
-                {(() => {
-                  const author = getUser(users, n.authorId);
-                  return author ? userFullName(author) : "Unknown";
-                })()}
-              </span>
-              <span className="text-xs ink-mute">· {n.createdAt}</span>
-              <button className="ml-auto btn btn-ghost text-xs"><Icons.edit size={12} />Amend</button>
+        {notes.length === 0 && <div className="p-6 text-center ink-mute text-sm">No notes yet.</div>}
+        {notes.map((n) => {
+          const author = getUser(users, n.authorId);
+          return (
+            <div key={n.id} className="p-4">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="chip" style={{ background: "#dbeafe", color: "#1e40af" }}>{n.noteType.replace(/_/g, " ")}</span>
+                <span className="text-sm font-medium">{author ? userFullName(author) : "Unknown"}</span>
+                <span className="text-xs ink-mute">· {n.createdAt?.slice(0, 16).replace("T", " ")}</span>
+                {n.isAmended && <span className="chip" style={{ background: "#fef3c7", color: "#854d0e" }}>amended</span>}
+                <button className="ml-auto btn btn-ghost text-xs" onClick={() => setAmendOpen({ id: n.id, original: n.content })}>
+                  Amend
+                </button>
+              </div>
+              <p className="text-sm ink-2 leading-relaxed whitespace-pre-wrap">{n.content}</p>
             </div>
-            <p className="text-sm ink-2 leading-relaxed">{n.body}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <Modal
         open={open}
@@ -354,32 +404,51 @@ function PatientNotesTab({ notes }: { notes: ClinicalNote[] }) {
         footer={
           <>
             <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                toast({ kind: "success", title: "Note saved" });
-                setOpen(false);
-              }}
-            >
-              Save note
+            <button className="btn btn-primary" onClick={save} disabled={isCreating || !content.trim()}>
+              {isCreating ? "Saving…" : "Save note"}
             </button>
           </>
         }
       >
         <div className="space-y-3">
           <Field label="Type" required>
-            <select className="select">
-              <option>PROGRESS_NOTE</option>
-              <option>ROUND_NOTE</option>
-              <option>ADMISSION_NOTE</option>
-              <option>DISCHARGE_NOTE</option>
-              <option>ESCALATION_NOTE</option>
+            <select className="select" value={noteType} onChange={(e) => setNoteType(e.target.value as NoteType)}>
+              <option value="PROGRESS_NOTE">PROGRESS_NOTE</option>
+              <option value="ROUND_NOTE">ROUND_NOTE</option>
+              <option value="ADMISSION_NOTE">ADMISSION_NOTE</option>
+              <option value="DISCHARGE_NOTE">DISCHARGE_NOTE</option>
+              <option value="ESCALATION_NOTE">ESCALATION_NOTE</option>
             </select>
           </Field>
           <Field label="Note" required>
-            <textarea className="textarea" rows={8} placeholder="Document assessment, plan, and any escalation" />
+            <textarea
+              className="textarea"
+              rows={8}
+              placeholder="Document assessment, plan, and any escalation"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+            />
           </Field>
           <p className="text-[11px] ink-mute">Notes are immutable once saved. Use Amend to add corrections; the original remains in the audit trail.</p>
+        </div>
+      </Modal>
+      <Modal
+        open={!!amendOpen}
+        onClose={() => setAmendOpen(null)}
+        title="Amend note"
+        width={640}
+        footer={
+          <>
+            <button className="btn" onClick={() => setAmendOpen(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={submitAmend} disabled={!amendText.trim()}>Submit amendment</button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div className="border hairline rounded p-3 text-xs ink-mute whitespace-pre-wrap">{amendOpen?.original}</div>
+          <Field label="Amended text" required>
+            <textarea className="textarea" rows={6} value={amendText} onChange={(e) => setAmendText(e.target.value)} />
+          </Field>
         </div>
       </Modal>
     </div>
@@ -387,34 +456,45 @@ function PatientNotesTab({ notes }: { notes: ClinicalNote[] }) {
 }
 
 function PatientTasksTab({ tasks }: { tasks: CareTask[] }) {
+  if (tasks.length === 0) {
+    return <div className="panel rounded p-8 text-center ink-mute">No tasks for this patient.</div>;
+  }
   return <div className="space-y-2">{tasks.map((t) => <TaskCard key={t.id} task={t} />)}</div>;
 }
 
-function PatientNoKTab({ patient }: { patient: Patient }) {
+function PatientNoKTab({ patientId }: { patientId: string }) {
+  const { data: nok = [], isLoading } = useGetPatientNextOfKinQuery(patientId);
+
+  if (isLoading) {
+    return <div className="panel rounded p-8 text-center ink-mute">Loading contacts…</div>;
+  }
   return (
     <div className="panel rounded p-4 space-y-3">
       <div className="flex justify-between items-center">
         <h3 className="font-semibold text-sm">Next of kin contacts</h3>
-        <button className="btn"><Icons.plus size={14} />Add</button>
       </div>
-      {patient.nok.map((n, i) => (
-        <div key={i} className="border hairline rounded p-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-center">
+      {nok.length === 0 && <div className="text-sm ink-mute">No next of kin on file.</div>}
+      {nok.map((n) => (
+        <div key={n.id} className="border hairline rounded p-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-center">
           <div>
             <div className="field-label">Name</div>
             <div className="font-medium">{n.name}</div>
           </div>
           <div>
-            <div className="field-label">Relation</div>
-            <div>{n.relation}</div>
+            <div className="field-label">Relationship</div>
+            <div>{n.relationship || "—"}</div>
           </div>
           <div>
             <div className="field-label">Contact</div>
-            <div className="mono text-sm">{n.phone}</div>
+            <div className="mono text-sm">{n.phone || "—"}</div>
             {n.email && <div className="mono text-xs ink-mute">{n.email}</div>}
           </div>
           <div>
             <div className="field-label">Notify · Consent</div>
-            <div className="text-sm">{n.method} · {n.consent ? <span className="text-emerald-700">Granted</span> : <span className="text-amber-700">Not granted</span>}</div>
+            <div className="text-sm">
+              {n.preferredContactMethod} ·{" "}
+              {n.notificationConsent ? <span className="text-emerald-700">Granted</span> : <span className="text-amber-700">Not granted</span>}
+            </div>
           </div>
         </div>
       ))}
@@ -426,63 +506,43 @@ export function MyTeamPage() {
   const toast = useToast();
   const { data: teams = [] } = useGetTeamsQuery();
   const { data: users = [] } = useGetUsersQuery();
-  const team = teams[0];
+  const currentUser = useAppSelector((state) => state.auth.user);
+  const [sendInvite, { isLoading: isSending }] = useSendTeamInviteMutation();
   const [open, setOpen] = useState(false);
+  const [invitedUserId, setInvitedUserId] = useState("");
 
-  if (!team) return null;
+  const team =
+    teams.find((t) => t.consultantId === currentUser?.id) ||
+    teams.find((t) => t.departmentId === currentUser?.departmentId) ||
+    teams[0];
+
+  if (!team) {
+    return <div className="panel rounded p-12 text-center ink-mute">No team found.</div>;
+  }
+
+  const consultant = team.consultantId ? getUser(users, team.consultantId) : undefined;
+
+  async function send() {
+    if (!invitedUserId) return;
+    try {
+      await sendInvite({ teamId: team!.id, invitedUserId }).unwrap();
+      toast({ kind: "success", title: "Invite sent" });
+      setOpen(false);
+      setInvitedUserId("");
+    } catch {
+      toast({ kind: "error", title: "Could not send invite" });
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <PageHeader title={team.name} subtitle={`${team.members.length} members · covers ${team.wards.join(", ")}`}>
+      <PageHeader title={team.name} subtitle={consultant ? `Led by ${userFullName(consultant)}` : "—"}>
         <button className="btn btn-primary" onClick={() => setOpen(true)}>
           <Icons.plus size={14} />Invite member
         </button>
       </PageHeader>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="panel rounded">
-          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Members</div>
-          <div className="divide-y hairline">
-            {team.members.map((uid) => {
-              const u = getUser(users, uid);
-              return (
-                <div key={uid} className="p-3 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-semibold text-sm">
-                    {u ? `${u.firstName[0]}${u.lastName[0]}` : "--"}
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{u ? userFullName(u) : ""}</div>
-                    <div className="text-xs ink-mute">{u?.email}</div>
-                  </div>
-                  {u && <RoleBadge role={u.role} />}
-                  {u?.role !== "CONSULTANT" && (
-                    <button className="btn btn-ghost text-xs" onClick={() => toast({ kind: "success", title: "Member removed" })}>
-                      Remove
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div className="panel rounded">
-          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Pending invites</div>
-          {team.pendingInvites.length === 0 ? (
-            <div className="p-6 text-center ink-mute text-sm">No pending invites</div>
-          ) : (
-            <div className="divide-y hairline">
-              {team.pendingInvites.map((i) => (
-                <div key={i.id} className="p-3 flex items-center gap-3">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{i.email}</div>
-                    <div className="text-xs ink-mute">Invited {i.sentAt} · expires {i.expiresAt}</div>
-                  </div>
-                  <RoleBadge role={i.role} />
-                  <button className="btn btn-ghost text-xs">Cancel</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="panel rounded p-4 text-sm ink-2">
+        Team membership is updated through invitations. Use the button above to invite a registrar or junior doctor.
       </div>
       <Modal
         open={open}
@@ -491,28 +551,21 @@ export function MyTeamPage() {
         footer={
           <>
             <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                toast({ kind: "success", title: "Invite sent" });
-                setOpen(false);
-              }}
-            >
-              Send invite
+            <button className="btn btn-primary" onClick={send} disabled={isSending || !invitedUserId}>
+              {isSending ? "Sending…" : "Send invite"}
             </button>
           </>
         }
       >
         <div className="space-y-3">
           <Field label="User to invite" required>
-            <select className="select">
+            <select className="select" value={invitedUserId} onChange={(e) => setInvitedUserId(e.target.value)}>
+              <option value="">— Select —</option>
               {users.filter((u) => ["REGISTRAR", "JUNIOR_DOCTOR"].includes(u.role)).map((u) => (
-                <option key={u.id}>{userFullName(u)} - {u.role}</option>
+                <option key={u.id} value={u.id}>{userFullName(u)} — {u.role}</option>
               ))}
             </select>
           </Field>
-          <Field label="Role on team"><select className="select"><option>REGISTRAR</option><option>JUNIOR_DOCTOR</option></select></Field>
-          <Field label="Message (optional)"><textarea className="textarea" rows={3} /></Field>
         </div>
       </Modal>
     </div>
@@ -521,8 +574,8 @@ export function MyTeamPage() {
 
 export function EscalationInbox({ scope }: { scope: "consultant" | "registrar" }) {
   const toast = useToast();
-  const { data: escalations = [] } = useGetEscalationsQuery();
-  const { data: patients = [] } = useGetPatientsQuery();
+  const { data: escalations = [], isLoading } = useCurrentWardEscalations();
+  const { data: patients = [] } = useCurrentWardPatients();
   const { data: wards = [] } = useGetWardsQuery();
   const { data: users = [] } = useGetUsersQuery();
   const [acknowledgeEscalation] = useAcknowledgeEscalationMutation();
@@ -537,108 +590,190 @@ export function EscalationInbox({ scope }: { scope: "consultant" | "registrar" }
     <div className="space-y-4">
       <PageHeader
         title={scope === "registrar" ? "On-call escalation queue" : "Escalation inbox"}
-        subtitle={`${list.filter((e) => e.status === "OPEN").length} open · auto-refresh 20s`}
+        subtitle={`${list.filter((e) => e.status === "OPEN").length} open`}
       />
-      <div className="space-y-3">
-        {list.map((e) => {
-          const patient = patients.find((p) => p.id === e.patientId);
-          const ward = patient ? getWard(wards, patient.wardId) : undefined;
-          const assignee = getUser(users, e.assigneeId);
-          return (
-            <EscalationCard
-              key={e.id}
-              esc={e}
-              patient={patient}
-              wardName={ward?.name}
-              assigneeName={assignee ? userFullName(assignee) : undefined}
-              onAck={async (id) => {
-                await acknowledgeEscalation({ id }).unwrap();
-                toast({ kind: "success", title: "Escalation acknowledged" });
-              }}
-              onResolve={async (id) => {
-                await resolveEscalation({ id }).unwrap();
-                toast({ kind: "success", title: "Escalation resolved" });
-              }}
-            />
-          );
-        })}
-      </div>
+      {isLoading ? (
+        <div className="panel rounded p-8 text-center ink-mute">Loading escalations…</div>
+      ) : list.length === 0 ? (
+        <div className="panel rounded p-12 text-center ink-mute">No escalations.</div>
+      ) : (
+        <div className="space-y-3">
+          {list.map((e) => {
+            const patient = patients.find((p) => p.id === e.patientId);
+            const ward = patient ? getWard(wards, patient.wardId) : undefined;
+            const assignee = e.assignedToId ? getUser(users, e.assignedToId) : undefined;
+            return (
+              <EscalationCard
+                key={e.id}
+                esc={e}
+                patient={patient}
+                wardName={ward?.name}
+                assigneeName={assignee ? userFullName(assignee) : undefined}
+                onAck={async (id) => {
+                  try {
+                    await acknowledgeEscalation({ escalationId: id }).unwrap();
+                    toast({ kind: "success", title: "Escalation acknowledged" });
+                  } catch {
+                    toast({ kind: "error", title: "Could not acknowledge" });
+                  }
+                }}
+                onResolve={async (id) => {
+                  try {
+                    await resolveEscalation({ escalationId: id, notes: "Resolved" }).unwrap();
+                    toast({ kind: "success", title: "Escalation resolved" });
+                  } catch {
+                    toast({ kind: "error", title: "Could not resolve" });
+                  }
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
 export function AdmissionForm() {
   const toast = useToast();
+  const wardId = useCurrentWardId();
   const { data: departments = [] } = useGetDepartmentsQuery();
   const { data: wards = [] } = useGetWardsQuery();
+  const { data: teams = [] } = useGetTeamsQuery();
   const { data: onCall = [] } = useGetOnCallRotationsQuery();
   const { data: users = [] } = useGetUsersQuery();
-  const [dept, setDept] = useState(departments[0]?.id || "d1");
+  const [admit, { isLoading }] = useAdmitPatientMutation();
+
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [hospitalNumber, setHospitalNumber] = useState("");
+  const [admissionType, setAdmissionType] = useState("EMERGENCY");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [gender, setGender] = useState("M");
+  const [departmentId, setDepartmentId] = useState("");
+  const [selectedWardId, setSelectedWardId] = useState("");
+  const [medicalTeamId, setMedicalTeamId] = useState("");
+  const [primaryDiagnosis, setPrimaryDiagnosis] = useState("");
+  const [specialtyRequired, setSpecialtyRequired] = useState("");
+
+  useEffect(() => {
+    if (!departmentId && departments.length) setDepartmentId(departments[0].id);
+  }, [departmentId, departments]);
+
+  useEffect(() => {
+    if (!selectedWardId && wardId) setSelectedWardId(wardId);
+  }, [selectedWardId, wardId]);
+
+  useEffect(() => {
+    if (!medicalTeamId && teams.length) setMedicalTeamId(teams[0].id);
+  }, [medicalTeamId, teams]);
+
+  async function submit() {
+    if (!firstName || !lastName || !hospitalNumber || !dateOfBirth || !selectedWardId || !medicalTeamId || !primaryDiagnosis) {
+      toast({ kind: "error", title: "Fill all required fields" });
+      return;
+    }
+    try {
+      await admit({
+        wardId: selectedWardId,
+        medicalTeamId,
+        firstName,
+        lastName,
+        dateOfBirth,
+        gender,
+        hospitalNumber,
+        admissionType,
+        primaryDiagnosis,
+        specialtyRequired: specialtyRequired || primaryDiagnosis
+      }).unwrap();
+      toast({ kind: "success", title: "Patient admitted" });
+      setFirstName("");
+      setLastName("");
+      setHospitalNumber("");
+      setPrimaryDiagnosis("");
+      setSpecialtyRequired("");
+    } catch {
+      toast({ kind: "error", title: "Admission failed" });
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Admit patient" subtitle="On-call admission - patient will be assigned to the on-call team" />
+      <PageHeader title="Admit patient" subtitle="New patient admission" />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="col-span-2 panel rounded p-5 space-y-4">
           <h3 className="font-semibold text-sm">Patient details</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="MRN" hint="Or leave blank to auto-generate"><input className="input mono" placeholder="OMTH-" /></Field>
-            <Field label="Admission type" required><select className="select"><option>EMERGENCY</option><option>ELECTIVE</option><option>TRANSFER</option></select></Field>
-            <Field label="First name" required><input className="input" /></Field>
-            <Field label="Last name" required><input className="input" /></Field>
-            <Field label="Sex" required><select className="select"><option>M</option><option>F</option></select></Field>
-            <Field label="Age" required><input className="input mono" type="number" min={0} max={120} /></Field>
+            <Field label="Hospital number (MRN)" required>
+              <input className="input mono" value={hospitalNumber} onChange={(e) => setHospitalNumber(e.target.value)} placeholder="OMTH-" />
+            </Field>
+            <Field label="Admission type" required>
+              <select className="select" value={admissionType} onChange={(e) => setAdmissionType(e.target.value)}>
+                <option>EMERGENCY</option>
+                <option>ELECTIVE</option>
+                <option>TRANSFER</option>
+              </select>
+            </Field>
+            <Field label="First name" required><input className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} /></Field>
+            <Field label="Last name" required><input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} /></Field>
+            <Field label="Gender" required>
+              <select className="select" value={gender} onChange={(e) => setGender(e.target.value)}>
+                <option>M</option><option>F</option><option>OTHER</option>
+              </select>
+            </Field>
+            <Field label="Date of birth" required>
+              <input className="input mono" type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
+            </Field>
           </div>
           <h3 className="font-semibold text-sm pt-2">Clinical</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Specialty / department" required>
-              <select className="select" value={dept} onChange={(e) => setDept(e.target.value)}>
+            <Field label="Department" required>
+              <select className="select" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
               </select>
             </Field>
             <Field label="Ward" required>
-              <select className="select">
-                {wards.filter((w) => w.deptId === dept).map((w) => (
-                  <option key={w.id}>{w.name}</option>
+              <select className="select" value={selectedWardId} onChange={(e) => setSelectedWardId(e.target.value)}>
+                {wards.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
                 ))}
               </select>
             </Field>
-            <Field label="Bed number" required><input className="input mono" placeholder="B-" /></Field>
-            <Field label="Initial acuity" required><select className="select"><option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option></select></Field>
+            <Field label="Medical team" required>
+              <select className="select" value={medicalTeamId} onChange={(e) => setMedicalTeamId(e.target.value)}>
+                {teams.filter((t) => !departmentId || t.departmentId === departmentId).map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Specialty required">
+              <input className="input" value={specialtyRequired} onChange={(e) => setSpecialtyRequired(e.target.value)} />
+            </Field>
           </div>
-          <Field label="Primary diagnosis" required><input className="input" placeholder="e.g. Severe community-acquired pneumonia" /></Field>
-          <Field label="Secondary diagnoses"><textarea className="textarea" rows={2} placeholder="One per line" /></Field>
-          <Field label="Admission notes"><textarea className="textarea" rows={4} /></Field>
+          <Field label="Primary diagnosis" required>
+            <input className="input" value={primaryDiagnosis} onChange={(e) => setPrimaryDiagnosis(e.target.value)} placeholder="e.g. Severe community-acquired pneumonia" />
+          </Field>
         </div>
         <div className="space-y-4">
           <div className="panel rounded p-4">
-            <div className="field-label mb-2">On-call team for this specialty</div>
-            <div className="font-semibold">{getDept(departments, dept)?.name || "-"}</div>
-            <div className="text-xs ink-mute mt-1">Patient will be assigned to this firm</div>
-            <div className="mt-3 pt-3 border-t hairline space-y-2">
-              <div className="text-xs ink-mute">On-call now</div>
-              {onCall.filter((o) => o.deptId === dept).map((o) => (
-                <div key={o.id} className="flex items-center justify-between text-sm">
-                  <span>{(() => {
-                    const staff = getUser(users, o.userId);
-                    return staff ? userFullName(staff) : "-";
-                  })()}</span>
-                  <RoleBadge role={o.role as Role} />
+            <div className="field-label mb-2">On-call now (in this department)</div>
+            {onCall.filter((o) => o.departmentId === departmentId).length === 0 && (
+              <div className="text-xs ink-mute">No active on-call.</div>
+            )}
+            {onCall.filter((o) => o.departmentId === departmentId).map((o) => {
+              const staff = getUser(users, o.doctorId);
+              return (
+                <div key={o.id} className="flex items-center justify-between text-sm mb-1">
+                  <span>{staff ? userFullName(staff) : "—"}</span>
+                  <RoleBadge role={o.role.includes("CONSULTANT") ? "CONSULTANT" : "REGISTRAR"} />
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
-          <div className="panel rounded p-4 space-y-3">
-            <h4 className="font-semibold text-sm">Next of kin</h4>
-            <Field label="Name"><input className="input" /></Field>
-            <Field label="Phone"><input className="input mono" placeholder="+234" /></Field>
-            <Field label="Notify via"><select className="select"><option>SMS</option><option>EMAIL</option><option>BOTH</option></select></Field>
-            <ToggleRow label="Consent given" />
-          </div>
-          <button className="btn btn-primary w-full justify-center" onClick={() => toast({ kind: "success", title: "Patient admitted", body: "OMTH-204971 - assigned to bed B-22" })}>
-            Admit patient
+          <button className="btn btn-primary w-full justify-center" onClick={submit} disabled={isLoading}>
+            {isLoading ? "Admitting…" : "Admit patient"}
           </button>
         </div>
       </div>
@@ -646,31 +781,20 @@ export function AdmissionForm() {
   );
 }
 
-function ToggleRow({ label, checked }: { label: string; checked?: boolean }) {
-  const [on, setOn] = useState(Boolean(checked));
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span>{label}</span>
-      <button onClick={() => setOn(!on)} className={`relative w-10 h-5 rounded-full ${on ? "bg-emerald-600" : "bg-slate-300"}`}>
-        <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${on ? "left-5" : "left-0.5"}`} />
-      </button>
-    </div>
-  );
-}
-
 export function MyTasksList({ role }: { role: Role }) {
   const toast = useToast();
-  const { data: tasks = [] } = useGetCareTasksQuery();
-  const { data: patients = [] } = useGetPatientsQuery();
-  const [updateCareTaskStatus] = useUpdateCareTaskStatusMutation();
+  const { data: tasks = [], isLoading } = useCurrentWardCareTasks();
+  const { data: patients = [] } = useCurrentWardPatients();
+  const [updateStatus, { isLoading: isUpdating }] = useUpdateCareTaskStatus();
   const [filter, setFilter] = useState("OPEN");
-  let list = tasks.filter((t) => t.assigneeRole === role);
+
+  let list = tasks.filter((t) => t.assignedToRole === role);
   if (filter === "OPEN") list = list.filter((t) => t.status !== "COMPLETED");
   if (filter === "COMPLETED") list = list.filter((t) => t.status === "COMPLETED");
 
   return (
     <div className="space-y-4">
-      <PageHeader title="My tasks" subtitle={`${list.length} ${filter.toLowerCase()} · today 6 May 2026`}>
+      <PageHeader title="My tasks" subtitle={`${list.length} ${filter.toLowerCase()}`}>
         {role === "NURSE" && <button className="btn btn-primary"><Icons.plus size={14} />New care plan task</button>}
       </PageHeader>
       <div className="flex gap-2">
@@ -678,73 +802,88 @@ export function MyTasksList({ role }: { role: Role }) {
           <button key={f} onClick={() => setFilter(f)} className={`btn ${filter === f ? "btn-primary" : ""}`}>{f}</button>
         ))}
       </div>
-      <div className="space-y-2">
-        {list.map((t) => {
-          const p = patients.find((x) => x.id === t.patientId);
-          return (
-            <TaskCard
-              key={t.id}
-              task={t}
-              patientName={p ? patientFullName(p) : undefined}
-              bed={p?.bed}
-              onAdvance={async () => {
-                const status = t.status === "PENDING" ? "IN_PROGRESS" : "COMPLETED";
-                await updateCareTaskStatus({ id: t.id, status }).unwrap();
-                toast({ kind: "success", title: `Task ${status === "IN_PROGRESS" ? "started" : "completed"}` });
-              }}
-            />
-          );
-        })}
-      </div>
+      {isLoading ? (
+        <div className="panel rounded p-8 text-center ink-mute">Loading tasks…</div>
+      ) : list.length === 0 ? (
+        <div className="panel rounded p-8 text-center ink-mute">No tasks.</div>
+      ) : (
+        <div className="space-y-2">
+          {list.map((t) => {
+            const p = patients.find((x) => x.id === t.patientId);
+            return (
+              <TaskCard
+                key={t.id}
+                task={t}
+                patientName={p ? patientFullName(p) : undefined}
+                bed={p?.bedNumber || undefined}
+                onAdvance={async () => {
+                  const status = t.status === "PENDING" ? "IN_PROGRESS" : "COMPLETED";
+                  try {
+                    await updateStatus({ taskId: t.id, status });
+                    toast({ kind: "success", title: `Task ${status === "IN_PROGRESS" ? "started" : "completed"}` });
+                  } catch {
+                    toast({ kind: "error", title: "Could not update task" });
+                  }
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+      {isUpdating && <div className="text-xs ink-mute">Updating…</div>}
     </div>
   );
 }
 
 export function HandoverNotesEntry() {
   const toast = useToast();
-  const { data: patients = [] } = useGetPatientsQuery();
+  const { data: patients = [], isLoading } = useCurrentWardPatients();
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Handover notes" subtitle="Soyinka Ward · End of morning shift · 14:30" />
+      <PageHeader title="Handover notes" subtitle="Add a status summary for every patient" />
       <div className="panel rounded p-3 flex items-center gap-3 bg-amber-50 border-amber-200">
         <Icons.alertCircle size={16} className="text-amber-700" />
-        <div className="text-sm ink-2">Add a status summary for every patient. Mark urgent flags for the incoming team.</div>
+        <div className="text-sm ink-2">Mark urgent flags for the incoming team.</div>
       </div>
-      <div className="space-y-3">
-        {patients.filter((p) => p.wardId === "w1").map((p) => (
-          <div key={p.id} className="panel rounded">
-            <div className="px-4 py-3 border-b hairline flex items-center gap-3">
-              <span className="mono text-xs">{p.bed}</span>
-              <span className="font-semibold">{patientFullName(p)}</span>
-              <AcuityBadge level={p.acuity} />
-              <NEWSBadge score={p.news} size="sm" />
-              <StatusChip status={p.status} />
-              <label className="ml-auto flex items-center gap-1.5 text-xs">
-                <input type="checkbox" />Urgent flag
-              </label>
+      {isLoading ? (
+        <div className="panel rounded p-8 text-center ink-mute">Loading patients…</div>
+      ) : (
+        <div className="space-y-3">
+          {patients.map((p) => (
+            <div key={p.id} className="panel rounded">
+              <div className="px-4 py-3 border-b hairline flex items-center gap-3">
+                <span className="mono text-xs">{p.bedNumber || "—"}</span>
+                <span className="font-semibold">{patientFullName(p)}</span>
+                <AcuityBadge level={p.acuityLevel} />
+                <NEWSBadge score={p.newsScore} size="sm" />
+                <StatusChip status={p.status} />
+                <label className="ml-auto flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" />Urgent flag
+                </label>
+              </div>
+              <div className="p-3">
+                <textarea
+                  className="textarea"
+                  rows={2}
+                  placeholder="Status summary, outstanding jobs, things the next team must know"
+                  value={notes[p.id] || ""}
+                  onChange={(e) => setNotes({ ...notes, [p.id]: e.target.value })}
+                />
+              </div>
             </div>
-            <div className="p-3">
-              <textarea
-                className="textarea"
-                rows={2}
-                placeholder="Status summary, outstanding jobs, things the night team must know"
-                value={notes[p.id] || ""}
-                onChange={(e) => setNotes({ ...notes, [p.id]: e.target.value })}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
       <div className="flex justify-end">
         <button
           className="btn btn-primary"
           onClick={() =>
             toast({
               kind: "success",
-              title: "Handover notes saved",
-              body: `${Object.keys(notes).length} of ${patients.filter((p) => p.wardId === "w1").length} patients with notes`
+              title: "Handover notes captured",
+              body: `${Object.keys(notes).filter((k) => notes[k].trim()).length} of ${patients.length} patients with notes`
             })
           }
         >
@@ -756,51 +895,54 @@ export function HandoverNotesEntry() {
 }
 
 export function RoundParticipateView() {
-  const { data: rounds = [] } = useGetRoundsQuery();
-  const { data: patients = [] } = useGetPatientsQuery();
+  const { data: rounds = [], isLoading } = useCurrentWardRounds();
+  const { data: patients = [] } = useCurrentWardPatients();
   const { data: users = [] } = useGetUsersQuery();
   const round = rounds.find((r) => r.status === "IN_PROGRESS");
 
+  if (isLoading) {
+    return <div className="panel rounded p-12 text-center ink-mute">Loading rounds…</div>;
+  }
   if (!round) {
     return <div className="panel rounded p-12 text-center ink-mute">No active round.</div>;
   }
 
-  const queue = round.queue.map((id) => patients.find((p) => p.id === id)).filter(Boolean) as Patient[];
+  const lead = getUser(users, round.leadDoctorId);
+  const participants = (round.teamMembers || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const queue = [...patients].sort(
+    (a, b) =>
+      (ACUITY_ORDER[b.acuityLevel] ?? 0) - (ACUITY_ORDER[a.acuityLevel] ?? 0) ||
+      (b.newsScore ?? 0) - (a.newsScore ?? 0)
+  );
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Active ward round (read-only)" subtitle={`${round.type} round · led by ${userFullName(getUser(users, round.leadId) || users[0])} · started ${round.startedAt.slice(11)}`} />
+      <PageHeader
+        title="Active ward round (read-only)"
+        subtitle={`${round.roundType} round${lead ? ` · led by ${userFullName(lead)}` : ""}${round.startedAt ? ` · started ${round.startedAt.slice(11, 16)}` : ""}`}
+      />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="panel rounded col-span-2">
           <div className="px-4 py-3 border-b hairline font-semibold text-sm">Patient queue</div>
           <div>
-            {queue.map((p, i) => (
-              <PatientRow
-                key={p.id}
-                patient={p}
-                reviewed={round.reviewed.includes(p.id)}
-                current={!round.reviewed.includes(p.id) && round.reviewed.length === i}
-              />
+            {queue.map((p) => (
+              <PatientRow key={p.id} patient={p} />
             ))}
           </div>
         </div>
         <div className="panel rounded p-4">
           <div className="font-semibold text-sm mb-2">Participants</div>
           <div className="space-y-2 text-sm">
-            {round.participants.map((uid) => {
+            {participants.length === 0 && <div className="ink-mute text-xs">—</div>}
+            {participants.map((uid) => {
               const u = getUser(users, uid);
               return (
                 <div key={uid} className="flex items-center justify-between">
-                  <span>{u ? userFullName(u) : "-"}</span>
+                  <span>{u ? userFullName(u) : "—"}</span>
                   {u && <RoleBadge role={u.role} />}
                 </div>
               );
             })}
-          </div>
-          <div className="mt-4 pt-4 border-t hairline">
-            <div className="font-semibold text-sm mb-2">Progress</div>
-            <div className="text-3xl font-semibold">{round.reviewed.length}<span className="text-base ink-mute font-normal">/{round.queue.length}</span></div>
-            <div className="text-xs ink-mute">patients reviewed</div>
           </div>
         </div>
       </div>

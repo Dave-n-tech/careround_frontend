@@ -1,6 +1,8 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { ToastProvider } from "@/components/ui";
-import { useAppSelector } from "./hooks";
+import { useAppDispatch, useAppSelector } from "./hooks";
+import { clearAuth } from "@/features/auth/authSlice";
 import { roleHomePath } from "@/navigation/nav";
 import RequireAuth from "@/routes/RequireAuth";
 import RequireRole from "@/routes/RequireRole";
@@ -17,6 +19,17 @@ import SupervisorRoutes from "@/pages/supervisor/SupervisorRoutes";
 
 export default function App() {
   const role = useAppSelector((state) => state.auth.role);
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    function onExpired() {
+      dispatch(clearAuth());
+      navigate("/login", { replace: true });
+    }
+    window.addEventListener("cr:auth-expired", onExpired);
+    return () => window.removeEventListener("cr:auth-expired", onExpired);
+  }, [dispatch, navigate]);
 
   return (
     <ToastProvider>

@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Field, Icons, NEWSBadge } from "@/components/ui";
 import { NEWSSparkline } from "@/components/ui/charts";
 import { PageHeader } from "@/layouts/PageHeader";
-import { useCreateEscalationMutation, useGetPatientsQuery, useRecordVitalsMutation } from "@/services/api";
+import { useCreateEscalationMutation, useRecordVitalsMutation, useGetVitalsHistoryQuery, useCurrentWardPatients } from "@/services/api";
 import { computeNEWS } from "@/utils/news";
 import { patientFullName } from "@/utils/format";
 import { demoClock } from "@/utils/time";
@@ -10,11 +10,15 @@ import { useToast } from "@/components/ui/Toast";
 
 export default function NurseVitalsForm() {
   const toast = useToast();
-  const { data: patients = [] } = useGetPatientsQuery();
+  const { data: patients = [], isLoading: isLoadingPatients } = useCurrentWardPatients();
   const [recordVitals, { isLoading: isRecording }] = useRecordVitalsMutation();
   const [createEscalation] = useCreateEscalationMutation();
-  const [patientId, setPatientId] = useState("p1");
+  const [patientId, setPatientId] = useState<string>("");
+  useEffect(() => {
+    if (!patientId && patients.length) setPatientId(patients[0].id);
+  }, [patientId, patients]);
   const patient = patients.find((p) => p.id === patientId);
+  const { data: vitalsHistory = [] } = useGetVitalsHistoryQuery({ patientId }, { skip: !patientId });
   const [v, setV] = useState({ resp: "", spo2: "", temp: "", sys: "", hr: "", cons: "ALERT" });
   const [submitted, setSubmitted] = useState(false);
   const [escalation, setEscalation] = useState<null | { severity: "RED" | "AMBER"; score: number; role: string; name: string }>(null);
@@ -31,12 +35,12 @@ export default function NurseVitalsForm() {
     setSubmitted(true);
     await recordVitals({
       patientId,
-      resp: Number(v.resp),
-      spo2: Number(v.spo2),
-      temp: Number(v.temp),
-      sys: Number(v.sys),
-      hr: Number(v.hr),
-      cons: v.cons
+      respiratoryRate: Number(v.resp),
+      oxygenSaturation: Number(v.spo2),
+      temperature: Number(v.temp),
+      systolicBP: Number(v.sys),
+      heartRate: Number(v.hr),
+      consciousnessLevel: v.cons
     }).unwrap();
     if (total >= 7) {
       await createEscalation({
@@ -79,8 +83,13 @@ export default function NurseVitalsForm() {
     };
   }, [total]);
 
-  if (!patient) return null;
-  const lastVital = patient.vitals[patient.vitals.length - 1];
+  if (isLoadingPatients) {
+    return <div className="panel rounded p-12 text-center ink-mute">Loading ward patients…</div>;
+  }
+  if (!patient) {
+    return <div className="panel rounded p-12 text-center ink-mute">No patients on this ward.</div>;
+  }
+  const lastVital = vitalsHistory[vitalsHistory.length - 1];
 
   const presets = [
     { id: "resp", label: "Respiratory rate", unit: "/min", min: 4, max: 60, step: 1 },
@@ -97,15 +106,15 @@ export default function NurseVitalsForm() {
       <div className="panel rounded p-4">
         <div className="field-label mb-2">Select patient</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          {patients.filter((p) => p.wardId === "w1" && p.status !== "DISCHARGED").slice(0, 6).map((pp) => (
+          {patients.filter((p) => p.status !== "DISCHARGED").slice(0, 6).map((pp) => (
             <button
               key={pp.id}
               onClick={() => setPatientId(pp.id)}
               className={`text-left p-3 rounded border ${patientId === pp.id ? "border-[var(--cr-brand)] bg-blue-50" : "border-slate-200 hover:bg-slate-50"}`}
             >
               <div className="flex items-center justify-between">
-                <span className="mono text-xs ink-mute">{pp.bed}</span>
-                <NEWSBadge score={pp.news} size="sm" />
+                <span className="mono text-xs ink-mute">{pp.bedNumber}</span>
+                <NEWSBadge score={pp.newsScore} size="sm" />
               </div>
               <div className="font-semibold text-sm mt-1">{patientFullName(pp)}</div>
               <div className="text-xs ink-mute truncate">{pp.primaryDiagnosis}</div>
@@ -120,7 +129,7 @@ export default function NurseVitalsForm() {
             <div>
               <div className="font-semibold">{patientFullName(patient)}</div>
               <div className="text-xs ink-mute">
-                {patient.mrn} · Bed {patient.bed} · last NEWS {patient.news} at {lastVital?.ts.slice(11, 16)}
+                {patient.hospitalNumber} · Bed {patient.bedNumber} · last NEWS {patient.newsScore} at {lastVital?.recordedAt?.slice(11, 16) || "-"}
               </div>
             </div>
             <div className="text-xs ink-mute">Now: {demoClock.dateLabel} · {demoClock.timeValue}</div>
@@ -189,10 +198,10 @@ export default function NurseVitalsForm() {
           </div>
           <div className="panel rounded p-4">
             <div className="field-label mb-2">Last 6 readings</div>
-            <NEWSSparkline history={patient.vitals.slice(-6)} w={260} h={48} />
+            <NEWSSparkline history={vitalsHistory.slice(-6)} w={260} h={48} />
             <div className="flex justify-between text-[10px] mono ink-mute mt-1">
-              {patient.vitals.slice(-6).map((vv, i) => (
-                <span key={i}>{vv.news}</span>
+              {vitalsHistory.slice(-6).map((vv, i) => (
+                <span key={i}>{vv.newsScore}</span>
               ))}
             </div>
           </div>

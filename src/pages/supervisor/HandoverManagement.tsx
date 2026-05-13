@@ -1,25 +1,23 @@
 import { useState } from "react";
-import { AcuityBadge, Field, Icons, NEWSBadge, StatusChip } from "@/components/ui";
+import { AcuityBadge, Icons, NEWSBadge, StatusChip } from "@/components/ui";
 import { PageHeader } from "@/layouts/PageHeader";
-import { useGetCareTasksQuery, useGetPatientsQuery, useGetShiftsQuery, useGetUsersQuery } from "@/services/api";
+import { useGetCareTasksByWardQuery, useGetPatientsByWardQuery, useGetCurrentShiftQuery, useGetUsersQuery } from "@/services/api";
 import { getUser, patientFullName } from "@/utils/format";
 import { useToast } from "@/components/ui/Toast";
 
 export default function HandoverManagement() {
   const toast = useToast();
-  const { data: patients = [] } = useGetPatientsQuery();
-  const { data: shifts = [] } = useGetShiftsQuery();
+  const { data: patients = [] } = useGetPatientsByWardQuery("w1");
+  const { data: currentShift } = useGetCurrentShiftQuery("w1");
   const { data: users = [] } = useGetUsersQuery();
-  const { data: tasks = [] } = useGetCareTasksQuery();
+  const { data: tasks = [] } = useGetCareTasksByWardQuery({ wardId: "w1" });
   const [step, setStep] = useState(0);
   const [handoverNotes, setHandoverNotes] = useState<Record<string, string>>({});
   const [urgent, setUrgent] = useState<Record<string, boolean>>({});
 
   const wardPatients = patients.filter((p) => p.wardId === "w1");
-  const outgoingShift = shifts.find((s) => s.id === "sh1");
-  const incomingShift = shifts.find((s) => s.id === "sh2");
 
-  if (!outgoingShift || !incomingShift) return null;
+  if (!currentShift) return null;
 
   if (step === 0) {
     return (
@@ -29,22 +27,16 @@ export default function HandoverManagement() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="border hairline rounded p-4">
               <div className="field-label mb-2">Outgoing shift</div>
-              <div className="font-semibold">{outgoingShift.name}</div>
+              <div className="font-semibold">{currentShift.type} Shift</div>
               <div className="text-sm mt-2 space-y-1">
-                <div><span className="ink-mute">Lead:</span> {getUser(users, outgoingShift.leadDoctorId || "")?.firstName}</div>
-                <div><span className="ink-mute">Nurse i/c:</span> {getUser(users, outgoingShift.nurseInChargeId || "")?.firstName}</div>
+                <div><span className="ink-mute">Lead:</span> {getUser(users, currentShift.leadDoctorId || "")?.firstName}</div>
+                <div><span className="ink-mute">Nurse i/c:</span> {getUser(users, currentShift.nurseInChargeId || "")?.firstName}</div>
               </div>
             </div>
             <div className="border hairline rounded p-4">
               <div className="field-label mb-2">Incoming shift</div>
-              <div className="font-semibold">{incomingShift.name}</div>
-              {incomingShift.leadDoctorId ? (
-                <div className="text-sm mt-2 space-y-1">
-                  <div><span className="ink-mute">Lead:</span> {getUser(users, incomingShift.leadDoctorId)?.firstName}</div>
-                </div>
-              ) : (
-                <div className="text-sm text-amber-700 mt-2">No lead assigned. Assign now.</div>
-              )}
+              <div className="font-semibold">Next Shift</div>
+              <div className="text-sm text-amber-700 mt-2">No lead assigned. Assign now.</div>
             </div>
           </div>
           <div className="text-sm ink-2">{wardPatients.length} patients to hand over. Each needs a status summary; mark urgent flags as appropriate.</div>
@@ -72,10 +64,10 @@ export default function HandoverManagement() {
           {wardPatients.map((p) => (
             <div key={p.id} className="panel rounded">
               <div className="px-4 py-3 border-b hairline flex items-center gap-3">
-                <span className="mono text-xs">{p.bed}</span>
+                <span className="mono text-xs">{p.bedNumber}</span>
                 <span className="font-semibold">{patientFullName(p)}</span>
-                <AcuityBadge level={p.acuity} />
-                <NEWSBadge score={p.news} size="sm" />
+                <AcuityBadge level={p.acuityLevel} />
+                <NEWSBadge score={p.newsScore} size="sm" />
                 <StatusChip status={p.status} />
                 <label className="ml-auto flex items-center gap-1.5 text-xs cursor-pointer">
                   <input
@@ -99,7 +91,7 @@ export default function HandoverManagement() {
                 <div className="text-xs ink-2 space-y-1">
                   <div className="field-label">Outstanding tasks</div>
                   {tasks.filter((t) => t.patientId === p.id && t.status !== "COMPLETED").map((t) => (
-                    <div key={t.id}>• {t.title} <span className="ink-mute">({t.windowStart}-{t.windowEnd})</span></div>
+                    <div key={t.id}>• {t.title} <span className="ink-mute">({t.windowStart?.slice(11,16)}-{t.windowEnd?.slice(11,16)})</span></div>
                   ))}
                   {tasks.filter((t) => t.patientId === p.id && t.status !== "COMPLETED").length === 0 && <span className="ink-mute">None</span>}
                 </div>

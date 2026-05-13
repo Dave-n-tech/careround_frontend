@@ -1,25 +1,42 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { Field, Icons, NEWSBadge, PatientRow, PriorityChip, RoleBadge, useToast } from "@/components/ui";
-import { NEWSSparkline } from "@/components/ui/charts";
 import { useAppSelector } from "@/app/hooks";
-import { useGetPatientsQuery, useGetUsersQuery } from "@/services/api";
-import type { ClinicalStatus, DischargeAssessment, Patient, Role, RoundType, TaskPriority, VitalsReading } from "@/types/domain";
+import {
+  useCurrentWardPatients,
+  useGetUsersQuery,
+  useCreateRoundMutation,
+  useStartRoundMutation,
+  useCompleteRoundMutation,
+  useReviewPatientMutation,
+  useCreateCareTaskMutation,
+  useGetLatestVitalsQuery,
+  useMarkDischargeReadyMutation
+} from "@/services/api";
+import { useCurrentMedicalTeamId, useCurrentWardId } from "@/features/ward/currentWard";
+import type {
+  AssignedToRole,
+  ClinicalStatus,
+  DischargeAssessment,
+  Patient,
+  Role,
+  RoundType,
+  TaskPriority
+} from "@/types/domain";
 import { patientFullName, userFullName } from "@/utils/format";
 
 type RoundReview = {
   clinicalStatus: ClinicalStatus;
   wasExamined: boolean;
-  news: number;
-  plan: string;
+  managementPlan: string;
   dischargeAssessment: DischargeAssessment;
-  notifiedNok: boolean;
+  notifiedNextOfKin: boolean;
 };
 
 type RoundTaskDraft = {
   id: string;
   title: string;
   priority: TaskPriority;
-  assigneeRole: Role;
+  assigneeRole: AssignedToRole;
   windowStart: string;
   windowEnd: string;
 };
@@ -32,14 +49,32 @@ type RoundDraft = {
   reviewed: Record<string, RoundReview>;
   tasks: Record<string, RoundTaskDraft[]>;
   currentIdx: number;
+  roundId: string | null;
 };
 
 type RoundStateSetter = Dispatch<SetStateAction<RoundDraft>>;
 
+const ACUITY_ORDER: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+
 export default function RoundWizard() {
   const toast = useToast();
-  const { data: patients = [] } = useGetPatientsQuery();
+  const { data: patients = [], isLoading: isLoadingPatients } = useCurrentWardPatients();
   const role = useAppSelector((state) => state.auth.role) || "CONSULTANT";
+  const user = useAppSelector((state) => state.auth.user);
+  const wardId = useCurrentWardId();
+  const teamId = useCurrentMedicalTeamId();
+
+  const [createRound] = useCreateRoundMutation();
+  const [startRound] = useStartRoundMutation();
+  const [completeRound] = useCompleteRoundMutation();
+
+  const sortedPatients = useMemo(() => {
+    return [...patients].sort(
+      (a, b) =>
+        (ACUITY_ORDER[b.acuityLevel] ?? 0) - (ACUITY_ORDER[a.acuityLevel] ?? 0) ||
+        (b.newsScore ?? 0) - (a.newsScore ?? 0)
+    );
+  }, [patients]);
 
   const [step, setStep] = useState(() => {
     const saved = sessionStorage.getItem("cr_round_step");
@@ -48,19 +83,81 @@ export default function RoundWizard() {
 
   const [round, setRound] = useState<RoundDraft>({
     type: "MORNING",
-    leadId: role === "CONSULTANT" ? "u_cons1" : "u_reg1",
-    participants: ["u_cons1", "u_reg1", "u_jr1", "u_jr2"],
-    queue: ["p1", "p6", "p2", "p3", "p5", "p7", "p4"],
-    reviewed: {} as Record<string, RoundReview>,
-    tasks: {} as Record<string, RoundTaskDraft[]>,
-    currentIdx: 0
+    leadId: user?.id || "",
+    participants: [],
+    queue: [],
+    reviewed: {},
+    tasks: {},
+    currentIdx: 0,
+    roundId: null
   });
 
   useEffect(() => {
     sessionStorage.setItem("cr_round_step", String(step));
   }, [step]);
 
+  useEffect(() => {
+    if (round.queue.length === 0 && sortedPatients.length) {
+      setRound((r) => ({
+        ...r,
+        queue: sortedPatients.map((p) => p.id),
+        leadId: r.leadId || user?.id || ""
+      }));
+    }
+  }, [sortedPatients, round.queue.length, user?.id]);
+
+  async function beginRound() {
+    if (!wardId || !teamId || !round.leadId) {
+      toast({ kind: "error", title: "Missing ward, team, or lead doctor" });
+      return;
+    }
+    try {
+      const created = await createRound({
+        wardId,
+        medicalTeamId: teamId,
+        roundType: round.type,
+        leadDoctorId: round.leadId,
+        teamMembers: round.participants.length ? round.participants.join(",") : undefined
+      }).unwrap();
+      await startRound(created.id).unwrap();
+      setRound((r) => ({ ...r, roundId: created.id }));
+      setStep(2);
+    } catch {
+      toast({ kind: "error", title: "Could not start round" });
+    }
+  }
+
+  async function finishRound() {
+    if (!round.roundId) {
+      setStep(0);
+      sessionStorage.removeItem("cr_round_step");
+      return;
+    }
+    try {
+      await completeRound(round.roundId).unwrap();
+      toast({ kind: "success", title: "Round completed" });
+    } catch {
+      toast({ kind: "error", title: "Could not complete round" });
+    }
+    sessionStorage.removeItem("cr_round_step");
+    setStep(0);
+    setRound({
+      type: "MORNING",
+      leadId: user?.id || "",
+      participants: [],
+      queue: sortedPatients.map((p) => p.id),
+      reviewed: {},
+      tasks: {},
+      currentIdx: 0,
+      roundId: null
+    });
+  }
+
   const stepNames = ["Setup", "Confirm and start", "Patient queue", "Review", "Post-round tasks", "Complete"];
+
+  if (isLoadingPatients) {
+    return <div className="panel rounded p-12 text-center ink-mute">Loading ward patients…</div>;
+  }
 
   return (
     <div className="space-y-4">
@@ -80,11 +177,11 @@ export default function RoundWizard() {
       </div>
 
       {step === 0 && <Step0 round={round} setRound={setRound} onNext={() => setStep(1)} />}
-      {step === 1 && <Step1 round={round} onBack={() => setStep(0)} onNext={() => setStep(2)} patients={patients} />}
-      {step === 2 && <Step2 round={round} onBack={() => setStep(1)} onReview={(idx) => { setRound((r) => ({ ...r, currentIdx: idx })); setStep(3); }} onComplete={() => setStep(5)} patients={patients} />}
-      {step === 3 && <Step3 round={round} setRound={setRound} onBack={() => setStep(2)} onNext={() => setStep(4)} patients={patients} role={role} />}
-      {step === 4 && <Step4 round={round} setRound={setRound} onBack={() => setStep(3)} onNextPatient={() => setStep(2)} patients={patients} />}
-      {step === 5 && <Step5 round={round} onBack={() => setStep(2)} onComplete={() => { toast({ kind: "success", title: "Round completed", body: "Notifications dispatched to next-of-kin" }); sessionStorage.removeItem("cr_round_step"); setStep(0); }} patients={patients} />}
+      {step === 1 && <Step1 round={round} onBack={() => setStep(0)} onNext={beginRound} patients={sortedPatients} />}
+      {step === 2 && <Step2 round={round} onBack={() => setStep(1)} onReview={(idx) => { setRound((r) => ({ ...r, currentIdx: idx })); setStep(3); }} onComplete={() => setStep(5)} patients={sortedPatients} />}
+      {step === 3 && <Step3 round={round} setRound={setRound} onBack={() => setStep(2)} onNext={() => setStep(4)} patients={sortedPatients} role={role} />}
+      {step === 4 && <Step4 round={round} setRound={setRound} onBack={() => setStep(3)} onNextPatient={() => setStep(2)} patients={sortedPatients} />}
+      {step === 5 && <Step5 round={round} onBack={() => setStep(2)} onComplete={finishRound} patients={sortedPatients} />}
     </div>
   );
 }
@@ -105,6 +202,7 @@ function Step0({ round, setRound, onNext }: { round: RoundDraft; setRound: Round
         </Field>
         <Field label="Lead doctor" required>
           <select className="select" value={round.leadId} onChange={(e) => setRound({ ...round, leadId: e.target.value })}>
+            <option value="">— Select —</option>
             {users.filter((u) => ["CONSULTANT", "REGISTRAR"].includes(u.role)).map((u) => (
               <option key={u.id} value={u.id}>{userFullName(u)}</option>
             ))}
@@ -125,16 +223,12 @@ function Step0({ round, setRound, onNext }: { round: RoundDraft; setRound: Round
                 }}
               />
               <span className="flex-1">{userFullName(u)}</span>
-              <RoleBadge role={u.role as Role} />
+              <RoleBadge role={u.role} />
             </label>
           ))}
         </div>
       </div>
-      <div className="rounded p-3 bg-emerald-50 border border-emerald-200 text-sm flex items-center gap-2">
-        <Icons.check size={16} className="text-emerald-700" />
-        <span>Morning shift is ACTIVE — round can begin.</span>
-      </div>
-      <div className="flex justify-end"><button className="btn btn-primary" onClick={onNext}>Continue →</button></div>
+      <div className="flex justify-end"><button className="btn btn-primary" onClick={onNext} disabled={!round.leadId}>Continue →</button></div>
     </div>
   );
 }
@@ -154,12 +248,12 @@ function Step1({ round, onBack, onNext, patients }: { round: RoundDraft; onBack:
           {queue.map((p, i) => (
             <div key={p.id} className="flex items-center gap-3 px-3 py-2.5 border-b hairline">
               <div className="w-6 mono text-xs ink-mute text-center">{i + 1}</div>
-              <div className="w-16 mono text-xs">{p.bed}</div>
+              <div className="w-16 mono text-xs">{p.bedNumber || "—"}</div>
               <div className="flex-1">
                 <div className="text-sm font-semibold">{patientFullName(p)}</div>
-                <div className="text-xs ink-mute">{p.primaryDiagnosis}</div>
+                <div className="text-xs ink-mute">{p.primaryDiagnosis || ""}</div>
               </div>
-              <NEWSBadge score={p.news} size="sm" />
+              <NEWSBadge score={p.newsScore} size="sm" />
             </div>
           ))}
         </div>
@@ -169,7 +263,6 @@ function Step1({ round, onBack, onNext, patients }: { round: RoundDraft; onBack:
           <div className="field-label mb-2">Round details</div>
           <div className="text-sm space-y-1.5">
             <div><span className="ink-mute">Type:</span> <span className="font-medium">{round.type}</span></div>
-            <div><span className="ink-mute">Lead:</span> <span className="font-medium">{round.leadId}</span></div>
             <div><span className="ink-mute">Participants:</span> <span className="font-medium">{round.participants.length}</span></div>
             <div><span className="ink-mute">Patients:</span> <span className="font-medium">{round.queue.length}</span></div>
           </div>
@@ -204,7 +297,7 @@ function Step2({ round, onBack, onReview, onComplete, patients }: { round: Round
               key={p.id}
               patient={p}
               reviewed={Boolean(round.reviewed[p.id])}
-              current={!round.reviewed[p.id] && i === Object.keys(round.reviewed).length}
+              current={!round.reviewed[p.id] && i === reviewedCount}
               onClick={() => onReview(i)}
             />
           ))}
@@ -218,7 +311,7 @@ function Step2({ round, onBack, onReview, onComplete, patients }: { round: Round
             <span className="text-base ink-mute">/ {round.queue.length}</span>
           </div>
           <div className="mt-2 h-2 rounded bg-slate-100 overflow-hidden">
-            <div className="h-full bg-emerald-600" style={{ width: `${(reviewedCount / round.queue.length) * 100}%` }} />
+            <div className="h-full bg-emerald-600" style={{ width: `${(reviewedCount / Math.max(1, round.queue.length)) * 100}%` }} />
           </div>
           <div className="text-xs ink-mute mt-1">patients reviewed</div>
         </div>
@@ -230,36 +323,58 @@ function Step2({ round, onBack, onReview, onComplete, patients }: { round: Round
 }
 
 function Step3({ round, setRound, onBack, onNext, patients, role }: { round: RoundDraft; setRound: RoundStateSetter; onBack: () => void; onNext: () => void; patients: Patient[]; role: Role }) {
+  const toast = useToast();
+  const [reviewPatient, { isLoading: isSavingReview }] = useReviewPatientMutation();
+  const [markDischargeReady, { isLoading: isMarkingDischarge }] = useMarkDischargeReadyMutation();
   const p = patients.find((x) => x.id === round.queue[round.currentIdx]);
-  const v = p?.vitals?.length ? p.vitals[p.vitals.length - 1] : undefined;
+  const { data: latestVitals } = useGetLatestVitalsQuery(p?.id || "", { skip: !p?.id });
   const [form, setForm] = useState<RoundReview>({
-    clinicalStatus: "IMPROVING" as ClinicalStatus,
+    clinicalStatus: "STABLE",
     wasExamined: true,
-    news: v?.news || 0,
-    plan: "",
-    dischargeAssessment: "NONE" as DischargeAssessment,
-    notifiedNok: false
+    managementPlan: "",
+    dischargeAssessment: "NONE",
+    notifiedNextOfKin: false
   });
   const isCons = role === "CONSULTANT";
 
   useEffect(() => {
     if (!p) return;
-    const latest = p.vitals[p.vitals.length - 1];
     setForm({
-      clinicalStatus: "IMPROVING",
+      clinicalStatus: "STABLE",
       wasExamined: true,
-      news: latest?.news || 0,
-      plan: "",
+      managementPlan: "",
       dischargeAssessment: "NONE",
-      notifiedNok: false
+      notifiedNextOfKin: false
     });
   }, [p?.id]);
 
   if (!p) return null;
 
-  function save() {
-    setRound((r) => ({ ...r, reviewed: { ...r.reviewed, [p!.id]: form } }));
-    onNext();
+  async function save() {
+    if (!round.roundId) {
+      toast({ kind: "error", title: "No active round" });
+      return;
+    }
+    try {
+      await reviewPatient({
+        roundId: round.roundId,
+        patientId: p!.id,
+        clinicalStatus: form.clinicalStatus,
+        wasExamined: form.wasExamined,
+        managementPlan: form.managementPlan || undefined,
+        dischargeAssessment: form.dischargeAssessment,
+        notifiedNextOfKin: form.notifiedNextOfKin
+      }).unwrap();
+
+      if (form.dischargeAssessment === "CONFIRMED" && isCons) {
+        await markDischargeReady({ patientId: p!.id }).unwrap();
+      }
+
+      setRound((r) => ({ ...r, reviewed: { ...r.reviewed, [p!.id]: form } }));
+      onNext();
+    } catch {
+      toast({ kind: "error", title: "Could not save review" });
+    }
   }
 
   return (
@@ -270,28 +385,28 @@ function Step3({ round, setRound, onBack, onNext, patients, role }: { round: Rou
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-semibold">{patientFullName(p)}</h2>
             </div>
-            <div className="text-sm ink-mute">{p.mrn} · Bed {p.bed} · {p.primaryDiagnosis}</div>
+            <div className="text-sm ink-mute">{p.hospitalNumber} · Bed {p.bedNumber || "—"} · {p.primaryDiagnosis || ""}</div>
           </div>
-          <NEWSBadge score={p.news} />
+          <NEWSBadge score={p.newsScore} />
         </div>
 
         <div className="grid grid-cols-3 md:grid-cols-6 divide-x hairline border hairline rounded">
-          <Vital label="RR" v={v?.resp} unit="/min" />
-          <Vital label="SpO2" v={v?.spo2} unit="%" />
-          <Vital label="Temp" v={v?.temp} unit="C" />
-          <Vital label="Sys" v={v?.sys} unit="mmHg" />
-          <Vital label="HR" v={v?.hr} unit="bpm" />
-          <Vital label="LOC" v={v?.cons} unit="" />
+          <Vital label="RR" v={latestVitals?.respiratoryRate} unit="/min" />
+          <Vital label="SpO2" v={latestVitals?.oxygenSaturation} unit="%" />
+          <Vital label="Temp" v={latestVitals?.temperature} unit="C" />
+          <Vital label="Sys" v={latestVitals?.systolicBP} unit="mmHg" />
+          <Vital label="HR" v={latestVitals?.heartRate} unit="bpm" />
+          <Vital label="LOC" v={latestVitals?.consciousnessLevel} unit="" />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
           <Field label="Clinical status" required>
             <select className="select" value={form.clinicalStatus} onChange={(e) => setForm({ ...form, clinicalStatus: e.target.value as ClinicalStatus })}>
-              <option>IMPROVING</option><option>STABLE</option><option>UNCHANGED</option><option>DETERIORATING</option><option>CRITICAL</option>
+              <option value="IMPROVING">IMPROVING</option>
+              <option value="STABLE">STABLE</option>
+              <option value="DETERIORATING">DETERIORATING</option>
+              <option value="CRITICAL">CRITICAL</option>
             </select>
-          </Field>
-          <Field label="NEWS at review" hint="Auto-filled from latest vitals">
-            <input className="input mono" type="number" value={form.news} onChange={(e) => setForm({ ...form, news: Number(e.target.value) })} />
           </Field>
           <div className="col-span-2">
             <Field label="Patient examined?">
@@ -303,48 +418,55 @@ function Step3({ round, setRound, onBack, onNext, patients, role }: { round: Rou
           </div>
           <div className="col-span-2">
             <Field label="Management plan" required>
-              <textarea className="textarea" rows={5} value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} placeholder="Examination findings, decisions, plan" />
+              <textarea
+                className="textarea"
+                rows={5}
+                value={form.managementPlan}
+                onChange={(e) => setForm({ ...form, managementPlan: e.target.value })}
+                placeholder="Examination findings, decisions, plan"
+              />
             </Field>
           </div>
           <Field label="Discharge assessment">
             <select className="select" value={form.dischargeAssessment} onChange={(e) => setForm({ ...form, dischargeAssessment: e.target.value as DischargeAssessment })}>
               <option value="NONE">NONE</option>
-              <option value="POSSIBLE">POSSIBLE - within 48h</option>
-              <option value="CONFIRMED" disabled={!isCons}>CONFIRMED - discharge today {isCons ? "" : "(consultant only)"}</option>
-              <option value="BLOCKED_SOCIAL">BLOCKED - social</option>
-              <option value="BLOCKED_MEDICAL">BLOCKED - medical</option>
+              <option value="POSSIBLE">POSSIBLE — within 48h</option>
+              <option value="CONFIRMED" disabled={!isCons}>CONFIRMED — discharge today{isCons ? "" : " (consultant only)"}</option>
+              <option value="BLOCKED_SOCIAL">BLOCKED — social</option>
+              <option value="BLOCKED_MEDICAL">BLOCKED — medical</option>
             </select>
           </Field>
           <Field label="Next-of-kin notified?">
             <div className="flex items-center gap-3 pt-1.5">
-              <button className={`relative w-10 h-5 rounded-full ${form.notifiedNok ? "bg-emerald-600" : "bg-slate-300"}`} onClick={() => setForm({ ...form, notifiedNok: !form.notifiedNok })}>
-                <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${form.notifiedNok ? "left-5" : "left-0.5"}`} />
+              <button
+                type="button"
+                className={`relative w-10 h-5 rounded-full ${form.notifiedNextOfKin ? "bg-emerald-600" : "bg-slate-300"}`}
+                onClick={() => setForm({ ...form, notifiedNextOfKin: !form.notifiedNextOfKin })}
+              >
+                <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${form.notifiedNextOfKin ? "left-5" : "left-0.5"}`} />
               </button>
-              <span className="text-xs ink-mute">{p.nok[0]?.name} via {p.nok[0]?.method}</span>
             </div>
           </Field>
         </div>
 
         <div className="flex items-center justify-between pt-3 border-t hairline">
           <button className="btn" onClick={onBack}>← Back to queue</button>
-          <button className="btn btn-primary" onClick={save}>Save review and add tasks →</button>
+          <button
+            className="btn btn-primary"
+            onClick={save}
+            disabled={isSavingReview || isMarkingDischarge || !form.managementPlan}
+          >
+            {isSavingReview ? "Saving…" : "Save review and add tasks →"}
+          </button>
         </div>
       </div>
 
       <div className="space-y-4">
         <div className="panel rounded">
-          <div className="px-4 py-3 border-b hairline font-semibold text-sm">NEWS trend</div>
-          <div className="p-4"><NEWSSparkline history={p.vitals} w={260} h={80} /></div>
-        </div>
-        <div className="panel rounded">
-          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Recent notes</div>
-          <div className="p-3 space-y-2 max-h-[260px] overflow-y-auto scroll-thin">
-            {p.vitals.slice(0, 3).map((n: VitalsReading, i: number) => (
-              <div key={i} className="text-xs ink-2 border-b hairline pb-2">
-                <div className="font-medium">ROUND NOTE · {n.ts.slice(11, 16)}</div>
-                <div className="ink-mute mt-0.5 line-clamp-3">NEWS {n.news} recorded</div>
-              </div>
-            ))}
+          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Latest NEWS</div>
+          <div className="p-4 text-center">
+            <div className="text-5xl font-bold mono">{latestVitals?.newsScore ?? p.newsScore}</div>
+            <div className="text-xs ink-mute mt-1">{latestVitals?.recordedAt?.slice(0, 16).replace("T", " ") || "no readings"}</div>
           </div>
         </div>
       </div>
@@ -353,23 +475,41 @@ function Step3({ round, setRound, onBack, onNext, patients, role }: { round: Rou
 }
 
 function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: RoundDraft; setRound: RoundStateSetter; onBack: () => void; onNextPatient: () => void; patients: Patient[] }) {
+  const toast = useToast();
+  const [createCareTask, { isLoading: isCreating }] = useCreateCareTaskMutation();
   const p = patients.find((x) => x.id === round.queue[round.currentIdx]);
   const [tasks, setTasks] = useState<RoundTaskDraft[]>([]);
   const [draft, setDraft] = useState<Omit<RoundTaskDraft, "id">>({ title: "", priority: "ROUTINE", assigneeRole: "NURSE", windowStart: "10:00", windowEnd: "14:00" });
 
-  if (!p) return null;
-
   useEffect(() => {
     if (!p) return;
     setTasks(round.tasks[p.id] || []);
-  }, [p.id, round.tasks]);
+  }, [p?.id, round.tasks]);
 
-  function add() {
-    if (!draft.title) return;
-    const next = [...tasks, { ...draft, id: "t_" + Math.random().toString(36).slice(2, 7) }];
-    setTasks(next);
-    setRound((r) => ({ ...r, tasks: { ...r.tasks, [p!.id]: next } }));
-    setDraft({ title: "", priority: "ROUTINE", assigneeRole: "NURSE", windowStart: "10:00", windowEnd: "14:00" });
+  if (!p) return null;
+
+  async function add() {
+    if (!draft.title || !round.roundId) return;
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      await createCareTask({
+        patientId: p!.id,
+        taskType: "POST_ROUND_JOB",
+        source: "POST_ROUND_JOB",
+        title: draft.title,
+        priority: draft.priority,
+        roundId: round.roundId,
+        windowStart: `${today}T${draft.windowStart}:00`,
+        windowEnd: `${today}T${draft.windowEnd}:00`
+      }).unwrap();
+      const next = [...tasks, { ...draft, id: "t_" + Math.random().toString(36).slice(2, 7) }];
+      setTasks(next);
+      setRound((r) => ({ ...r, tasks: { ...r.tasks, [p!.id]: next } }));
+      setDraft({ title: "", priority: "ROUTINE", assigneeRole: "NURSE", windowStart: "10:00", windowEnd: "14:00" });
+      toast({ kind: "success", title: "Task added" });
+    } catch {
+      toast({ kind: "error", title: "Could not create task" });
+    }
   }
 
   return (
@@ -377,24 +517,17 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
       <div className="col-span-2 panel rounded p-5 space-y-4">
         <div>
           <h2 className="text-lg font-semibold">Post-round tasks for {patientFullName(p)}</h2>
-          <p className="text-sm ink-mute">Source automatically set to POST_ROUND_JOB. Add as many as needed.</p>
+          <p className="text-sm ink-mute">Source POST_ROUND_JOB.</p>
         </div>
 
         <div className="space-y-2">
-          {tasks.map((t, i) => (
+          {tasks.map((t) => (
             <div key={t.id} className="border hairline rounded p-3 flex items-center gap-3">
               <PriorityChip priority={t.priority} />
               <div className="flex-1">
                 <div className="text-sm font-semibold">{t.title}</div>
-                <div className="text-xs ink-mute">→ {t.assigneeRole} · {t.windowStart}-{t.windowEnd}</div>
+                <div className="text-xs ink-mute">→ {t.assigneeRole} · {t.windowStart}–{t.windowEnd}</div>
               </div>
-              <button className="btn btn-ghost p-1.5" onClick={() => {
-                const n = tasks.filter((_, j) => j !== i);
-                setTasks(n);
-                setRound((r) => ({ ...r, tasks: { ...r.tasks, [p!.id]: n } }));
-              }}>
-                <Icons.x size={14} />
-              </button>
             </div>
           ))}
         </div>
@@ -406,14 +539,14 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
             <select className="select" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value as TaskPriority })}>
               <option>ROUTINE</option><option>URGENT</option><option>EMERGENCY</option>
             </select>
-            <select className="select" value={draft.assigneeRole} onChange={(e) => setDraft({ ...draft, assigneeRole: e.target.value as Role })}>
+            <select className="select" value={draft.assigneeRole} onChange={(e) => setDraft({ ...draft, assigneeRole: e.target.value as AssignedToRole })}>
               <option>NURSE</option><option>JUNIOR_DOCTOR</option><option>REGISTRAR</option>
             </select>
             <div className="grid grid-cols-2 gap-2">
               <input className="input mono" type="time" value={draft.windowStart} onChange={(e) => setDraft({ ...draft, windowStart: e.target.value })} />
               <input className="input mono" type="time" value={draft.windowEnd} onChange={(e) => setDraft({ ...draft, windowEnd: e.target.value })} />
             </div>
-            <button className="btn btn-primary justify-center" onClick={add}>Add task</button>
+            <button className="btn btn-primary justify-center" onClick={add} disabled={isCreating || !draft.title}>{isCreating ? "Adding…" : "Add task"}</button>
           </div>
         </div>
 
@@ -426,7 +559,7 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
       <div className="panel rounded p-4">
         <div className="font-semibold text-sm mb-3">Round progress</div>
         <div className="space-y-1.5">
-          {round.queue.map((id: string, i: number) => {
+          {round.queue.map((id, i) => {
             const pp = patients.find((x) => x.id === id);
             const reviewed = round.reviewed[id];
             return (
@@ -438,9 +571,9 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
                 ) : (
                   <div className="w-4 h-4 rounded-full border-2 border-slate-300" />
                 )}
-                <span className="mono text-xs ink-mute w-12">{pp?.bed}</span>
+                <span className="mono text-xs ink-mute w-12">{pp?.bedNumber || "—"}</span>
                 <span className="truncate flex-1">{pp?.lastName}</span>
-                <NEWSBadge score={pp?.news || 0} size="sm" />
+                <NEWSBadge score={pp?.newsScore || 0} size="sm" />
               </div>
             );
           })}
@@ -452,13 +585,13 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
 
 function Step5({ round, onBack, onComplete, patients }: { round: RoundDraft; onBack: () => void; onComplete: () => void; patients: Patient[] }) {
   const reviewed = Object.keys(round.reviewed);
-  const unreviewed = round.queue.filter((id: string) => !round.reviewed[id]);
+  const unreviewed = round.queue.filter((id) => !round.reviewed[id]);
   const totalTasks = Object.values(round.tasks).reduce((a, b) => a + b.length, 0);
   return (
     <div className="panel rounded p-6 max-w-3xl space-y-5">
       <div>
         <h2 className="text-lg font-semibold">Complete round — review summary</h2>
-        <p className="text-sm ink-mute mt-1">Final check before publishing the round and dispatching notifications.</p>
+        <p className="text-sm ink-mute mt-1">Final check before publishing the round.</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="border hairline rounded p-3"><div className="field-label">Patients reviewed</div><div className="text-2xl font-semibold mt-1 text-emerald-700">{reviewed.length}</div></div>
@@ -469,12 +602,11 @@ function Step5({ round, onBack, onComplete, patients }: { round: RoundDraft; onB
         <div className="rounded p-3 bg-amber-50 border border-amber-200 text-sm">
           <div className="font-semibold text-amber-900 mb-1">{unreviewed.length} patient(s) unreviewed</div>
           <ul className="text-amber-900 space-y-0.5">
-            {unreviewed.map((id: string) => {
+            {unreviewed.map((id) => {
               const p = patients.find((x) => x.id === id);
-              return <li key={id}>- Bed {p?.bed || "-"} - {p ? patientFullName(p) : id}</li>;
+              return <li key={id}>— Bed {p?.bedNumber || "—"} — {p ? patientFullName(p) : id}</li>;
             })}
           </ul>
-          <div className="text-xs text-amber-700 mt-2">You can complete the round anyway — these patients will be flagged in the report.</div>
         </div>
       )}
       <div className="flex justify-between pt-3 border-t hairline">
@@ -490,10 +622,9 @@ function Vital({ label, v, unit }: { label: string; v: number | string | undefin
     <div className="p-4">
       <div className="field-label">{label}</div>
       <div className="text-2xl font-semibold mt-1">
-        {v}
+        {v ?? "—"}
         <span className="text-sm ink-mute font-normal ml-1">{unit}</span>
       </div>
     </div>
   );
 }
-

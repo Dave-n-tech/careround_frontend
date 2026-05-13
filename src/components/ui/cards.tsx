@@ -30,13 +30,13 @@ export function PatientRow({
           <div className="w-5 h-5 rounded-full border-2 border-slate-300" />
         )}
       </div>
-      <div className="w-16 mono text-xs text-slate-500">{patient.bed}</div>
+      <div className="w-16 mono text-xs text-slate-500">{patient.bedNumber}</div>
       <div className="flex-1 min-w-0">
         <div className="text-[13.5px] font-semibold truncate">{patient.lastName.toUpperCase()}, {patient.firstName}</div>
-        <div className="text-xs ink-mute truncate">{patient.age}{patient.sex} · {patient.primaryDiagnosis}</div>
+        <div className="text-xs ink-mute truncate">{patient.gender} · {patient.primaryDiagnosis}</div>
       </div>
-      <AcuityBadge level={patient.acuity} />
-      <NEWSBadge score={patient.news} size="sm" />
+      <AcuityBadge level={patient.acuityLevel} />
+      <NEWSBadge score={patient.newsScore} size="sm" />
       <StatusChip status={patient.status} />
       <Icons.chevron size={14} className="text-slate-400" />
     </div>
@@ -118,7 +118,7 @@ export function EscalationCard({
             </span>
             {patient && (
               <span className="text-xs ink-mute">
-                · {wardName || "Ward"} · Bed {patient.bed}
+                · {wardName || "Ward"} · Bed {patient.bedNumber}
               </span>
             )}
           </div>

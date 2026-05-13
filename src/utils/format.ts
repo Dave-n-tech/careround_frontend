@@ -1,12 +1,11 @@
-import type { Department, Patient, Team, User, Ward } from "@/types/domain";
+import type { Department, MedicalTeam, Patient, User, Ward } from "@/types/domain";
 
 export function patientFullName(p: Patient) {
   return `${p.lastName.toUpperCase()}, ${p.firstName}`;
 }
 
 export function userFullName(u: User) {
-  const prefix = u.title ? `${u.title} ` : "";
-  return `${prefix}${u.firstName} ${u.lastName}`;
+  return `${u.firstName} ${u.lastName}`;
 }
 
 export function getById<T extends { id: string }>(list: T[], id: string) {
@@ -21,7 +20,7 @@ export function getDept(departments: Department[], id: string) {
   return getById(departments, id);
 }
 
-export function getTeam(teams: Team[], id: string) {
+export function getTeam(teams: MedicalTeam[], id: string) {
   return getById(teams, id);
 }
 

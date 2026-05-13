@@ -36,6 +36,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState(ROLE_EMAILS.CONSULTANT);
   const [password, setPassword] = useState("demo");
   const [role, setRole] = useState<Role>("CONSULTANT");
+  const [error, setError] = useState<string | null>(null);
   const demoMode = appConfig.demoMode;
 
   const headline = useMemo(
@@ -44,6 +45,8 @@ export default function LoginPage() {
   );
 
   async function handleLogin() {
+    setError(null);
+
     if (demoMode) {
       const user = USERS.find((u) => u.role === role) as User | undefined;
       if (user) {
@@ -53,9 +56,19 @@ export default function LoginPage() {
       return;
     }
 
-    await login({ email, password }).unwrap();
-    await fetchMe().unwrap();
-    navigate("/");
+    try {
+      // API requires hospitalId — sourced from env for single-tenant deployment
+      const hospitalId = appConfig.hospitalId;
+      if (!hospitalId) {
+        setError("Hospital ID is not configured. Set VITE_HOSPITAL_ID in your environment.");
+        return;
+      }
+      await login({ hospitalId, email, password }).unwrap();
+      const me = await fetchMe().unwrap();
+      navigate(roleHomePath(me.role));
+    } catch {
+      setError("Invalid credentials. Please try again.");
+    }
   }
 
   return (
@@ -83,6 +96,11 @@ export default function LoginPage() {
             <p className="text-sm ink-mute mt-1">Use your hospital credentials to continue.</p>
           </div>
           <div className="space-y-3">
+            {error && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+                {error}
+              </div>
+            )}
             <Field label="Email">
               <input className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
             </Field>

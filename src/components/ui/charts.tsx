@@ -1,11 +1,11 @@
 type SparkProps = {
-  history: { news: number }[];
+  history: { newsScore: number }[];
   h?: number;
   w?: number;
 };
 
 export function NEWSSparkline({ history, h = 42, w = 160 }: SparkProps) {
-  const pts = history.map((v) => v.news);
+  const pts = history.map((v) => v.newsScore);
   const max = Math.max(8, ...pts);
   const stepX = w / (pts.length - 1);
   const path = pts
