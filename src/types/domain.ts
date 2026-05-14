@@ -384,7 +384,6 @@ export interface HospitalOnboarding {
   reviewedAt: string | null;
   provisionedHospitalId: string | null;
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface JwtResponse {

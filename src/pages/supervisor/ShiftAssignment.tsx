@@ -41,8 +41,12 @@ export default function ShiftAssignment() {
       toast({ kind: "error", title: "Assign both lead doctor and nurse in charge" });
       return;
     }
-    await assignShift({ id: shiftId, leadDoctorId: a.lead, nurseInChargeId: a.nurse }).unwrap();
-    toast({ kind: "success", title: "Shift activated", body: "Lead and nurse in charge notified" });
+    try {
+      await assignShift({ id: shiftId, leadDoctorId: a.lead, nurseInChargeId: a.nurse }).unwrap();
+      toast({ kind: "success", title: "Shift activated", body: "Lead and nurse in charge notified" });
+    } catch {
+      toast({ kind: "error", title: "Could not activate shift" });
+    }
   }
 
   return (

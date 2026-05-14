@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Field, NEWSBadge } from "@/components/ui";
 import { PageHeader } from "@/layouts/PageHeader";
-import { useCreateEscalationMutation, useGetLatestVitalsQuery, useCurrentWardPatients, useGetOnCallRotationsQuery, useGetUsersQuery } from "@/services/api";
+import { useCreateEscalationMutation, useGetVitalsHistoryQuery, useCurrentWardPatients, useGetOnCallRotationsQuery, useGetUsersQuery } from "@/services/api";
 import { patientFullName } from "@/utils/format";
 import { useToast } from "@/components/ui/Toast";
 
@@ -19,7 +19,8 @@ export default function NurseCreateEscalation() {
   const [notes, setNotes] = useState("");
   const patient = patients.find((p) => p.id === pid);
 
-  const { data: latestVitals } = useGetLatestVitalsQuery(pid, { skip: !pid });
+  const { data: vitalsHistory = [] } = useGetVitalsHistoryQuery({ patientId: pid, limit: 1 }, { skip: !pid });
+  const latestVitals = vitalsHistory[0];
 
   function getOnCallRoutesTo(sev: "AMBER" | "RED"): string {
     const now = new Date().toISOString();

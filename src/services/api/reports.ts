@@ -51,6 +51,10 @@ const reportsApi = api.injectEndpoints({
     getRoundHistoryReport: builder.query<RoundHistoryItem[], ReportQuery>({
       query: (params) => `/reports/round-history${reportParams(params)}`,
       providesTags: ["Reports"]
+    }),
+    getWardSummaryReport: builder.query<Record<string, unknown>, ReportQuery>({
+      query: (params) => `/reports/ward-summary${reportParams(params)}`,
+      providesTags: ["Reports"]
     })
   })
 });
@@ -59,5 +63,6 @@ export const {
   useGetTaskCompletionReportQuery,
   useGetOverdueTasksReportQuery,
   useGetPatientFlowReportQuery,
-  useGetRoundHistoryReportQuery
+  useGetRoundHistoryReportQuery,
+  useGetWardSummaryReportQuery
 } = reportsApi;

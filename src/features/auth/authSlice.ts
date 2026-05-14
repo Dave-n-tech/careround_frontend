@@ -89,8 +89,11 @@ const authSlice = createSlice({
       localStorage.setItem("cr_role", String(payload.role));
     });
     builder.addMatcher(authApi.endpoints.getMe.matchRejected, (state) => {
-      // Do NOT clear the access token — the server may be temporarily down.
-      // A genuine 401 is handled by baseQuery dispatching cr:auth-expired → clearAuth.
+      // If already authenticated, ignore the failure. A genuine 401 is handled
+      // separately: baseQuery dispatches cr:auth-expired → clearAuth, which sets
+      // status to "idle" before this matcher runs. Any other error (network, 5xx)
+      // while the user is authenticated should not log them out.
+      if (state.status === "authenticated") return;
       state.user = null;
       state.status = "error";
       state.error = "Unable to load session";

@@ -10,10 +10,10 @@ export type UpdateSystemConfigRequest = {
 };
 
 export type UpdateHospitalRequest = {
-  name?: string;
-  address?: string;
-  contactEmail?: string;
-  contactPhone?: string;
+  name: string;
+  address: string;
+  contactEmail: string;
+  contactPhone: string;
 };
 
 const hospitalApi = api.injectEndpoints({

@@ -4,6 +4,7 @@ import type { Round, PatientRoundReview } from "@/types/domain";
 export type CreateRoundRequest = {
   wardId: string;
   medicalTeamId: string;
+  shiftId?: string;
   roundType: string;
   leadDoctorId: string;
   scheduledTime?: string;
@@ -36,6 +37,10 @@ const roundsApi = api.injectEndpoints({
       query: (roundId) => ({ url: `/rounds/${roundId}/complete`, method: "POST" }),
       invalidatesTags: ["Rounds"]
     }),
+    cancelRound: builder.mutation<Round, string>({
+      query: (roundId) => ({ url: `/rounds/${roundId}/cancel`, method: "POST" }),
+      invalidatesTags: ["Rounds"]
+    }),
     getRoundReviews: builder.query<PatientRoundReview[], string>({
       query: (roundId) => `/rounds/${roundId}/reviews`
     }),
@@ -55,6 +60,7 @@ export const {
   useCreateRoundMutation,
   useStartRoundMutation,
   useCompleteRoundMutation,
+  useCancelRoundMutation,
   useGetRoundReviewsQuery,
   useReviewPatientMutation
 } = roundsApi;

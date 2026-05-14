@@ -47,39 +47,44 @@ export default function NurseVitalsForm() {
       return;
     }
     setSubmitted(true);
-    await recordVitals({
-      patientId,
-      respiratoryRate: Number(v.resp),
-      oxygenSaturation: Number(v.spo2),
-      temperature: Number(v.temp),
-      systolicBP: Number(v.sys),
-      heartRate: Number(v.hr),
-      consciousnessLevel: v.cons,
-      note: vitalsNote.trim() || undefined
-    }).unwrap();
-    if (total >= 7) {
-      await createEscalation({
+    try {
+      await recordVitals({
         patientId,
-        triggerType: "HIGH_NEWS_SCORE",
-        severity: "RED",
-        notes: `NEWS ${total} recorded from vitals screen`
+        respiratoryRate: Number(v.resp),
+        oxygenSaturation: Number(v.spo2),
+        temperature: Number(v.temp),
+        systolicBP: Number(v.sys),
+        heartRate: Number(v.hr),
+        consciousnessLevel: v.cons,
+        note: vitalsNote.trim() || undefined
       }).unwrap();
-      setEscalation({ severity: "RED", score: total, role: "CONSULTANT", name: getOnCallName("CONSULTANT_ON_CALL") });
-    } else if (total >= 5) {
-      await createEscalation({
-        patientId,
-        triggerType: "HIGH_NEWS_SCORE",
-        severity: "AMBER",
-        notes: `NEWS ${total} recorded from vitals screen`
-      }).unwrap();
-      setEscalation({ severity: "AMBER", score: total, role: "REGISTRAR", name: getOnCallName("REGISTRAR_ON_CALL") });
-    } else {
-      toast({ kind: "success", title: "Vitals recorded", body: `NEWS ${total} · within range` });
-      setTimeout(() => {
-        setV({ resp: "", spo2: "", temp: "", sys: "", hr: "", cons: "ALERT" });
-        setVitalsNote("");
-        setSubmitted(false);
-      }, 600);
+      if (total >= 7) {
+        await createEscalation({
+          patientId,
+          triggerType: "HIGH_NEWS_SCORE",
+          severity: "RED",
+          notes: `NEWS ${total} recorded from vitals screen`
+        }).unwrap();
+        setEscalation({ severity: "RED", score: total, role: "CONSULTANT", name: getOnCallName("CONSULTANT_ON_CALL") });
+      } else if (total >= 5) {
+        await createEscalation({
+          patientId,
+          triggerType: "HIGH_NEWS_SCORE",
+          severity: "AMBER",
+          notes: `NEWS ${total} recorded from vitals screen`
+        }).unwrap();
+        setEscalation({ severity: "AMBER", score: total, role: "REGISTRAR", name: getOnCallName("REGISTRAR_ON_CALL") });
+      } else {
+        toast({ kind: "success", title: "Vitals recorded", body: `NEWS ${total} · within range` });
+        setTimeout(() => {
+          setV({ resp: "", spo2: "", temp: "", sys: "", hr: "", cons: "ALERT" });
+          setVitalsNote("");
+          setSubmitted(false);
+        }, 600);
+      }
+    } catch {
+      toast({ kind: "error", title: "Could not record vitals" });
+      setSubmitted(false);
     }
   }
 

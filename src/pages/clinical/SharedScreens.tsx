@@ -35,7 +35,6 @@ import {
   useGetHandoversByWardQuery,
   useGetCurrentShiftQuery,
   useGetShiftsQuery,
-  useGetLatestVitalsQuery,
   useGetOnCallRotationsQuery,
   useGetPatientByIdQuery,
   useGetPatientNextOfKinQuery,
@@ -496,7 +495,7 @@ function ageFromDob(dob: string | null | undefined): string {
 
 export function PatientListPage({ scope, title }: { scope: "team" | "ward"; title: string }) {
   const navigate = useNavigate();
-  const currentUser = useAppSelector((state) => state.auth.user);
+  const currentUser = useAppSelector((state:any) => state.auth.user);
   const { data: patients = [], isLoading, isError, refetch } = useCurrentWardPatients();
   const { data: teams = [] } = useGetTeamsQuery();
   const [filter, setFilter] = useState("ALL");
@@ -686,7 +685,8 @@ export function PatientDetailPage() {
 }
 
 function PatientOverview({ patient, tasks, notes }: { patient: Patient; tasks: CareTask[]; notes: ClinicalNote[] }) {
-  const { data: latestVitals } = useGetLatestVitalsQuery(patient.id);
+  const { data: vitalsHistory = [] } = useGetVitalsHistoryQuery({ patientId: patient.id, limit: 1 });
+  const latestVitals = vitalsHistory[0];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1373,7 +1373,7 @@ export function MyTasksList({ role }: { role: Role }) {
   if (filter === "COMPLETED") list = list.filter((t) => t.status === "COMPLETED");
 
   async function submitTask() {
-    if (!patientId || !title || !windowStart || !windowEnd) {
+    if (!patientId || !title || !taskType || !windowStart || !windowEnd) {
       toast({ kind: "error", title: "Fill all required task fields" });
       return;
     }

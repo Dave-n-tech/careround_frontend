@@ -49,7 +49,7 @@ const clinicalApi = api.injectEndpoints({
       query: (patientId) => `/clinical-notes/patient/${patientId}`,
       providesTags: (_r, _e, patientId) => [{ type: "ClinicalNotes", id: patientId }]
     }),
-    createClinicalNote: builder.mutation<ClinicalNote, { patientId: string; noteType: string; content: string; patientRoundReviewId?: string }>({
+    createClinicalNote: builder.mutation<ClinicalNote, { patientId: string; noteType: string; content: string; patientRoundReviewId?: string; vitalsId?: string }>({
       query: (body) => ({ url: "/clinical-notes", method: "POST", body }),
       invalidatesTags: (_r, _e, { patientId }) => [{ type: "ClinicalNotes", id: patientId }]
     }),

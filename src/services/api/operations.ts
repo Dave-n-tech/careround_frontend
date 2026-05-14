@@ -94,8 +94,13 @@ const opsApi = api.injectEndpoints({
       query: (id) => `/oncall/${id}`,
       providesTags: (_r, _e, id) => [{ type: "OnCallRotations", id }]
     }),
-    getCurrentOnCall: builder.query<OnCallRotation, { departmentId: string; role: string }>({
-      query: ({ departmentId, role }) => `/oncall/current?departmentId=${departmentId}&role=${role}`,
+    getCurrentOnCall: builder.query<OnCallRotation, { departmentId?: string; wardId?: string; role: string }>({
+      query: ({ departmentId, wardId, role }) => {
+        const params = new URLSearchParams({ role });
+        if (departmentId) params.set("departmentId", departmentId);
+        if (wardId) params.set("wardId", wardId);
+        return `/oncall/current?${params.toString()}`;
+      },
       providesTags: ["OnCallRotations"]
     }),
     createOnCallRotation: builder.mutation<OnCallRotation, CreateOnCallRotationRequest>({

@@ -9,9 +9,10 @@ import {
   useCreateRoundMutation,
   useStartRoundMutation,
   useCompleteRoundMutation,
+  useCancelRoundMutation,
   useReviewPatientMutation,
   useCreateCareTaskMutation,
-  useGetLatestVitalsQuery,
+  useGetVitalsHistoryQuery,
   useMarkDischargeReadyMutation
 } from "@/services/api";
 import { useCurrentMedicalTeamId, useCurrentWardId } from "@/features/ward/currentWard";
@@ -76,14 +77,15 @@ export default function RoundWizard() {
   const toast = useToast();
   const { data: patients = [], isLoading: isLoadingPatients } = useCurrentWardPatients();
   const { data: currentShift } = useCurrentWardShift();
-  const role = useAppSelector((state) => state.auth.role) || "CONSULTANT";
-  const user = useAppSelector((state) => state.auth.user);
+  const role = useAppSelector((state: any) => state.auth.role) || "CONSULTANT";
+  const user = useAppSelector((state: any) => state.auth.user);
   const wardId = useCurrentWardId();
   const teamId = useCurrentMedicalTeamId();
 
   const [createRound] = useCreateRoundMutation();
   const [startRound] = useStartRoundMutation();
   const [completeRound] = useCompleteRoundMutation();
+  const [cancelRound] = useCancelRoundMutation();
 
   const sortedPatients = useMemo(() => {
     return [...patients].sort(
@@ -140,15 +142,19 @@ export default function RoundWizard() {
       const created = await createRound({
         wardId,
         medicalTeamId: teamId,
+        shiftId: currentShift.id,
         roundType: round.type,
         leadDoctorId: round.leadId,
         teamMembers: round.participants.length ? round.participants.join(",") : undefined
       }).unwrap();
-      await startRound(created.id).unwrap();
+      if (created.status !== "IN_PROGRESS") {
+        await startRound(created.id).unwrap();
+      }
       setRound((r) => ({ ...r, roundId: created.id }));
       setStep(2);
-    } catch {
-      toast({ kind: "error", title: "Could not start round" });
+    } catch (err: unknown) {
+      const msg = (err as { data?: { message?: string } })?.data?.message;
+      toast({ kind: "error", title: msg || "Could not start round" });
     }
   }
 
@@ -178,6 +184,30 @@ export default function RoundWizard() {
     });
   }
 
+  async function handleCancelRound() {
+    if (!round.roundId) return;
+    if (!window.confirm("Cancel this round? This cannot be undone.")) return;
+    try {
+      await cancelRound(round.roundId).unwrap();
+      toast({ kind: "success", title: "Round cancelled" });
+    } catch {
+      toast({ kind: "error", title: "Could not cancel round" });
+      return;
+    }
+    sessionStorage.removeItem("cr_round_step");
+    setStep(0);
+    setRound({
+      type: "MORNING",
+      leadId: user?.id || "",
+      participants: [],
+      queue: sortedPatients.map((p) => p.id),
+      reviewed: {},
+      tasks: {},
+      currentIdx: 0,
+      roundId: null
+    });
+  }
+
   const stepNames = ["Setup", "Confirm and start", "Patient queue", "Review", "Post-round tasks", "Complete"];
 
   if (isLoadingPatients) {
@@ -191,9 +221,16 @@ export default function RoundWizard() {
           <h1 className="text-xl font-semibold">Conduct ward round</h1>
           <p className="text-xs ink-mute">Step {step + 1} of 6 · {stepNames[step]}</p>
         </div>
-        <button className="btn btn-ghost text-sm" onClick={() => { sessionStorage.removeItem("cr_round_step"); setStep(0); }}>
-          Restart
-        </button>
+        <div className="flex gap-2">
+          {round.roundId && (
+            <button className="btn text-sm text-red-600 border-red-200 hover:bg-red-50" onClick={handleCancelRound}>
+              Cancel round
+            </button>
+          )}
+          <button className="btn btn-ghost text-sm" onClick={() => { sessionStorage.removeItem("cr_round_step"); setStep(0); }}>
+            Restart
+          </button>
+        </div>
       </div>
       <div className="flex items-center gap-1.5">
         {stepNames.map((s, i) => (
@@ -280,7 +317,7 @@ function Step0({ round, setRound, onNext }: { round: RoundDraft; setRound: Round
           </div>
         )}
       </div>
-      <div className="flex justify-end"><button className="btn btn-primary w-full sm:w-auto" onClick={onNext} disabled={!round.leadId}>Continue →</button></div>
+      <div className="flex justify-end"><button className="btn btn-primary w-full sm:w-auto" onClick={onNext} disabled={!leadOptions.some((u) => u.id === round.leadId)}>Continue →</button></div>
     </div>
   );
 }
@@ -386,7 +423,6 @@ function Step2({ round, onBack, onReview, onComplete, patients }: { round: Round
           <div className="text-xs ink-mute mt-1">patients reviewed</div>
         </div>
         <button className="btn btn-primary w-full justify-center py-2.5" onClick={onComplete} disabled={reviewedCount === 0}>Complete round →</button>
-        <button className="btn w-full justify-center" onClick={onBack}>← Back</button>
       </div>
     </div>
   );
@@ -397,7 +433,11 @@ function Step3({ round, setRound, onBack, onNext, patients, role }: { round: Rou
   const [reviewPatient, { isLoading: isSavingReview }] = useReviewPatientMutation();
   const [markDischargeReady, { isLoading: isMarkingDischarge }] = useMarkDischargeReadyMutation();
   const p = patients.find((x) => x.id === round.queue[round.currentIdx]);
-  const { data: latestVitals } = useGetLatestVitalsQuery(p?.id || "", { skip: !p?.id });
+  const { data: vitalsHistory = [] } = useGetVitalsHistoryQuery(
+    { patientId: p?.id || "", limit: 1 },
+    { skip: !p?.id }
+  );
+  const latestVitals = vitalsHistory[0];
   const [form, setForm] = useState<RoundReview>({
     clinicalStatus: "STABLE",
     wasExamined: true,
