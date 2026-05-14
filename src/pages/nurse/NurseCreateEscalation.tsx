@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Field, NEWSBadge } from "@/components/ui";
 import { PageHeader } from "@/layouts/PageHeader";
-import { useCreateEscalationMutation, useGetLatestVitalsQuery, useCurrentWardPatients } from "@/services/api";
+import { useCreateEscalationMutation, useGetLatestVitalsQuery, useCurrentWardPatients, useGetOnCallRotationsQuery, useGetUsersQuery } from "@/services/api";
 import { patientFullName } from "@/utils/format";
 import { useToast } from "@/components/ui/Toast";
 
@@ -9,6 +9,8 @@ export default function NurseCreateEscalation() {
   const toast = useToast();
   const { data: patients = [], isLoading: isLoadingPatients } = useCurrentWardPatients();
   const [createEscalation, { isLoading }] = useCreateEscalationMutation();
+  const { data: onCallRotations = [] } = useGetOnCallRotationsQuery();
+  const { data: allUsers = [] } = useGetUsersQuery();
   const [pid, setPid] = useState<string>("");
   useEffect(() => {
     if (!pid && patients.length) setPid(patients[0].id);
@@ -18,6 +20,18 @@ export default function NurseCreateEscalation() {
   const patient = patients.find((p) => p.id === pid);
 
   const { data: latestVitals } = useGetLatestVitalsQuery(pid, { skip: !pid });
+
+  function getOnCallRoutesTo(sev: "AMBER" | "RED"): string {
+    const now = new Date().toISOString();
+    const role = sev === "RED" ? "CONSULTANT_ON_CALL" : "REGISTRAR_ON_CALL";
+    const title = sev === "RED" ? "On-call Consultant" : "On-call Registrar";
+    const rotation = onCallRotations.find(
+      (r) => r.role === role && r.startTime <= now && r.endTime >= now
+    );
+    if (!rotation) return title;
+    const doctor = allUsers.find((u) => u.id === rotation.doctorId);
+    return doctor ? `${title} - Dr. ${doctor.firstName} ${doctor.lastName}` : title;
+  }
 
   if (isLoadingPatients) {
     return <div className="panel rounded p-6 text-center ink-mute sm:p-12">Loading patients…</div>;
@@ -48,7 +62,7 @@ export default function NurseCreateEscalation() {
           </Field>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Severity"><select className="select" value={severity} onChange={(event) => setSeverity(event.target.value as "AMBER" | "RED")}><option>AMBER</option><option>RED</option></select></Field>
-            <Field label="Routes to" hint="Determined by severity"><input className="input" disabled value={severity === "RED" ? "On-call Consultant - Prof. Adaeze Okafor" : "On-call Registrar - Dr. Chinedu Eze"} /></Field>
+            <Field label="Routes to" hint="Determined by severity"><input className="input" disabled value={getOnCallRoutesTo(severity)} /></Field>
           </div>
           <div className="flex justify-end pt-2">
             <button

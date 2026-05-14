@@ -72,6 +72,7 @@ export default function TopBar() {
         <span className="hidden ink-mute sm:inline">{clock.dateLabel} · {clock.timeLabel}</span>
       </div>
       <div className="flex-1" />
+      {role !== "ADMIN" && (
       <div className="relative order-last w-full sm:order-none sm:w-72">
         <input
           className="input pl-8"
@@ -123,6 +124,7 @@ export default function TopBar() {
           </div>
         )}
       </div>
+      )}
       <div className="relative">
         <button className="relative btn btn-ghost p-2" title="Notifications" onClick={() => setNotificationsOpen((open) => !open)}>
           <Icons.bell size={16} />
@@ -150,7 +152,7 @@ export default function TopBar() {
                     }`}
                     onClick={() => {
                       if (!notification.read) markRead(notification.id);
-                      goTo(notification.routeTarget);
+                      goTo(notification.routeTarget || `/notifications?selected=${notification.id}`);
                     }}
                   >
                     <div className="text-sm font-medium">{notification.title}</div>
@@ -163,9 +165,14 @@ export default function TopBar() {
         )}
       </div>
       <div className="min-w-0 flex items-center gap-2 pl-2 border-l hairline sm:gap-2.5 sm:pl-3">
-        <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold">
+        <button
+          className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold"
+          onClick={() => navigate("/profile")}
+          title="Profile"
+          type="button"
+        >
           {initials}
-        </div>
+        </button>
         <div className="hidden text-right sm:block">
           <div className="max-w-[150px] truncate text-sm font-medium leading-tight md:max-w-[220px]">
             {user ? `${user.firstName} ${user.lastName}` : appConfig.hospitalName}

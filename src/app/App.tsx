@@ -10,7 +10,12 @@ import RequireRole from "@/routes/RequireRole";
 import AppShell from "@/layouts/AppShell";
 import LandingPage from "@/pages/LandingPage";
 import LoginPage from "@/pages/LoginPage";
+import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
 import SignupPage from "@/pages/SignupPage";
+import NotificationsPage from "@/pages/NotificationsPage";
+import ProfilePage from "@/pages/ProfilePage";
+import PlatformLoginPage from "@/pages/platform/PlatformLoginPage";
+import PlatformAdminPage from "@/pages/platform/PlatformAdminPage";
 import AdminRoutes from "@/pages/admin/AdminRoutes";
 import ConsultantRoutes from "@/pages/clinical/ConsultantRoutes";
 import RegistrarRoutes from "@/pages/clinical/RegistrarRoutes";
@@ -45,11 +50,17 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/platform/login" element={<PlatformLoginPage />} />
+        <Route path="/platform" element={<PlatformAdminPage />} />
 
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
             <Route path="/search" element={<SearchResultsPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/change-password" element={<ProfilePage />} />
             <Route element={<RequireRole allow={["ADMIN"]} />}>
               <Route path="/admin/*" element={<AdminRoutes />} />
             </Route>

@@ -124,9 +124,6 @@ export default function SignupPage() {
                 </div>
               </div>
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--cr-line)] pt-4">
-                <p className="max-w-md text-xs leading-5 ink-mute">
-                  This request does not create a shared public account. Each hospital is onboarded as its own tenant with isolated data and configuration.
-                </p>
                 <button className="btn btn-primary w-full px-5 py-2.5 sm:w-auto" onClick={submit} disabled={isLoading}>
                   {isLoading ? "Submitting…" : "Submit request"}
                 </button>

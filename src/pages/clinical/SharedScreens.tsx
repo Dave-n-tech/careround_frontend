@@ -38,15 +38,22 @@ import {
   useGetOnCallRotationsQuery,
   useGetPatientByIdQuery,
   useGetPatientNextOfKinQuery,
+  useGetPatientsByWardIdsQuery,
   useGetCareTasksByPatientQuery,
   useGetConsultantDashboardQuery,
+  useGetNurseDashboardQuery,
+  useGetDoctorDashboardQuery,
   useGetTeamsQuery,
   useGetUsersQuery,
   useGetVitalsHistoryQuery,
+  useListPendingInvitesQuery,
   useGetWardsQuery,
+  useAcceptInviteMutation,
+  useDeclineInviteMutation,
   useResolveEscalationMutation,
   useSendTeamInviteMutation,
   useInitiateHandoverMutation,
+  useUpdatePatientStatusMutation,
   useUpdateCareTaskStatus
 } from "@/services/api";
 import { useCurrentWardId } from "@/features/ward/currentWard";
@@ -73,6 +80,269 @@ function dashboardString(data: Record<string, unknown> | undefined, keys: string
   return fallback;
 }
 
+function dashboardPatients(data: Record<string, unknown> | undefined): Patient[] {
+  const keys = ["teamPatientList", "teamPatientsList", "assignedPatients", "patients"];
+  for (const key of keys) {
+    const value = data?.[key];
+    if (Array.isArray(value)) return value as Patient[];
+  }
+  return [];
+}
+
+export function NurseDashboard() {
+  const {
+    data: dashboard,
+    isLoading: isDashboardLoading,
+    isError: isDashboardError,
+    refetch: refetchDashboard
+  } = useGetNurseDashboardQuery();
+  const { data: patients = [], isLoading: isPatientsLoading } = useCurrentWardPatients();
+  const { data: tasks = [] } = useCurrentWardCareTasks();
+  const { data: escalations = [] } = useCurrentWardEscalations();
+
+  const myTasks = tasks.filter((t) => t.assignedToRole === "NURSE");
+  const openTasks = myTasks.filter((t) => t.status !== "COMPLETED");
+  const overdueTasks = myTasks.filter((t) => t.status === "OVERDUE");
+  const highAcuity = patients.filter((p) => p.acuityLevel === "CRITICAL" || p.acuityLevel === "HIGH");
+  const openEscalations = escalations.filter((e) => e.status !== "RESOLVED");
+
+  const stats = [
+    {
+      label: "Open tasks",
+      value: dashboardNumber(dashboard, ["openTasks", "pendingTasks", "taskCount", "nurseTasks"], openTasks.length),
+      sub: `${overdueTasks.length} overdue`,
+      accent: "#7c3aed",
+      icon: <Icons.tasks size={18} />
+    },
+    {
+      label: "High acuity patients",
+      value: dashboardNumber(dashboard, ["highAcuityPatients", "criticalPatients", "acutePatients"], highAcuity.length),
+      sub: `${patients.length} total on ward`,
+      accent: "#b91c1c",
+      icon: <Icons.patients size={18} />
+    },
+    {
+      label: "Open escalations",
+      value: dashboardNumber(dashboard, ["openEscalations", "escalationCount", "activeEscalations"], openEscalations.length),
+      sub: `${openEscalations.filter((e) => e.severity === "RED").length} red`,
+      accent: "#b45309",
+      icon: <Icons.escalation size={18} />
+    },
+    {
+      label: "Completed tasks",
+      value: dashboardNumber(dashboard, ["completedTasks", "tasksCompleted", "doneCount"], myTasks.filter((t) => t.status === "COMPLETED").length),
+      sub: myTasks.length > 0 ? `${Math.round((myTasks.filter((t) => t.status === "COMPLETED").length / myTasks.length) * 100)}% rate` : "—",
+      accent: "#15803d",
+      icon: <Icons.check size={18} />
+    }
+  ];
+
+  const loading = isDashboardLoading || isPatientsLoading;
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Nurse dashboard"
+        subtitle={isDashboardError ? "Backend dashboard unavailable" : "Ward care summary"}
+      >
+        <button className="btn" onClick={() => refetchDashboard()}>
+          <Icons.refresh size={14} />Refresh
+        </button>
+      </PageHeader>
+
+      {isDashboardError && (
+        <div className="panel rounded border-l-4 border-l-red-600 p-4 text-sm text-red-700">
+          Could not load /dashboard/nurse. Care task and patient data below is still live from backend.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <StatCard key={stat.label} {...stat} value={loading ? "..." : stat.value} />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="panel rounded">
+          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Open nursing tasks</div>
+          <div className="divide-y hairline">
+            {openTasks.slice(0, 8).map((t) => {
+              const patient = patients.find((p) => p.id === t.patientId);
+              return (
+                <div key={t.id} className="px-4 py-3 text-sm flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="font-medium">{t.title}</div>
+                    <div className="text-xs ink-mute">{patient ? `${patientFullName(patient)}${patient.bedNumber ? ` · Bed ${patient.bedNumber}` : ""}` : "—"}</div>
+                  </div>
+                  <StatusChip status={t.status} />
+                </div>
+              );
+            })}
+            {openTasks.length === 0 && !loading && (
+              <div className="p-6 text-center ink-mute text-sm">No open nursing tasks.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="panel rounded">
+          <div className="px-4 py-3 border-b hairline font-semibold text-sm">High acuity patients</div>
+          <table className="cr">
+            <thead>
+              <tr>
+                <th>Bed</th>
+                <th>Patient</th>
+                <th>NEWS</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...patients]
+                .sort((a, b) => (ACUITY_ORDER[b.acuityLevel] ?? 0) - (ACUITY_ORDER[a.acuityLevel] ?? 0) || (b.newsScore ?? 0) - (a.newsScore ?? 0))
+                .slice(0, 6)
+                .map((p) => (
+                  <tr key={p.id}>
+                    <td className="mono text-xs">{p.bedNumber || "—"}</td>
+                    <td className="font-medium">{patientFullName(p)}</td>
+                    <td><NEWSBadge score={p.newsScore} size="sm" /></td>
+                    <td><StatusChip status={p.status} /></td>
+                  </tr>
+                ))}
+              {!loading && patients.length === 0 && (
+                <tr><td colSpan={4} className="text-center ink-mute p-6">No patients on ward.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function DoctorDashboard() {
+  const currentUser = useAppSelector((state) => state.auth.user);
+  const {
+    data: dashboard,
+    isLoading: isDashboardLoading,
+    isError: isDashboardError,
+    refetch: refetchDashboard
+  } = useGetDoctorDashboardQuery();
+  const { data: patients = [], isLoading: isPatientsLoading } = useCurrentWardPatients();
+  const { data: tasks = [] } = useCurrentWardCareTasks();
+  const { data: escalations = [] } = useCurrentWardEscalations();
+  const { data: rounds = [] } = useCurrentWardRounds();
+  const { data: users = [] } = useGetUsersQuery();
+
+  const myRole = currentUser?.role ?? "JUNIOR_DOCTOR";
+  const assignedToRoleKey = myRole === "REGISTRAR" ? "REGISTRAR" : "JUNIOR_DOCTOR";
+  const myTasks = tasks.filter((t) => t.assignedToRole === assignedToRoleKey);
+  const openTasks = myTasks.filter((t) => t.status !== "COMPLETED");
+  const openEscalations = escalations.filter((e) => e.status !== "RESOLVED");
+  const activeRounds = rounds.filter((r) => r.status === "IN_PROGRESS");
+
+  const stats = [
+    {
+      label: "Assigned tasks",
+      value: dashboardNumber(dashboard, ["assignedTasks", "openTasks", "pendingTasks", "taskCount"], openTasks.length),
+      sub: `${openTasks.filter((t) => t.priority === "URGENT" || t.priority === "EMERGENCY").length} urgent`,
+      accent: "#7c3aed",
+      icon: <Icons.tasks size={18} />
+    },
+    {
+      label: "Active rounds",
+      value: dashboardNumber(dashboard, ["activeRounds", "roundsInProgress", "inProgressRounds"], activeRounds.length),
+      sub: activeRounds.length > 0 ? `${activeRounds[0].roundType} round in progress` : "No active rounds",
+      accent: "#0e7490",
+      icon: <Icons.rounds size={18} />
+    },
+    {
+      label: "Ward patients",
+      value: dashboardNumber(dashboard, ["patientCount", "wardPatients", "totalPatients"], patients.length),
+      sub: `${patients.filter((p) => p.acuityLevel === "CRITICAL" || p.acuityLevel === "HIGH").length} high acuity`,
+      accent: "#0b5cab",
+      icon: <Icons.patients size={18} />
+    },
+    {
+      label: "Open escalations",
+      value: dashboardNumber(dashboard, ["openEscalations", "escalationCount", "activeEscalations"], openEscalations.length),
+      sub: `${openEscalations.filter((e) => e.severity === "RED").length} red`,
+      accent: "#b91c1c",
+      icon: <Icons.escalation size={18} />
+    }
+  ];
+
+  const loading = isDashboardLoading || isPatientsLoading;
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title={myRole === "REGISTRAR" ? "Registrar dashboard" : "Junior doctor dashboard"}
+        subtitle={isDashboardError ? "Backend dashboard unavailable" : "Ward summary"}
+      >
+        <button className="btn" onClick={() => refetchDashboard()}>
+          <Icons.refresh size={14} />Refresh
+        </button>
+      </PageHeader>
+
+      {isDashboardError && (
+        <div className="panel rounded border-l-4 border-l-red-600 p-4 text-sm text-red-700">
+          Could not load /dashboard/doctor. Ward data below is still live from backend.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <StatCard key={stat.label} {...stat} value={loading ? "..." : stat.value} />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="panel rounded">
+          <div className="px-4 py-3 border-b hairline font-semibold text-sm">My assigned tasks</div>
+          <div className="divide-y hairline">
+            {openTasks.slice(0, 8).map((t) => {
+              const patient = patients.find((p) => p.id === t.patientId);
+              return (
+                <div key={t.id} className="px-4 py-3 text-sm flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="font-medium">{t.title}</div>
+                    <div className="text-xs ink-mute">{patient ? patientFullName(patient) : "—"}</div>
+                  </div>
+                  <StatusChip status={t.status} />
+                </div>
+              );
+            })}
+            {openTasks.length === 0 && !loading && (
+              <div className="p-6 text-center ink-mute text-sm">No assigned tasks.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="panel rounded">
+          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Active rounds</div>
+          {activeRounds.length === 0 && !loading ? (
+            <div className="p-6 text-center ink-mute text-sm">No active rounds.</div>
+          ) : (
+            <div className="divide-y hairline">
+              {activeRounds.map((r) => {
+                const lead = getUser(users, r.leadDoctorId);
+                return (
+                  <div key={r.id} className="px-4 py-3 text-sm">
+                    <div className="font-medium">{r.roundType} round</div>
+                    <div className="text-xs ink-mute mt-0.5">
+                      Led by {lead ? `${lead.firstName} ${lead.lastName}` : "—"}
+                      {r.startedAt ? ` · started ${r.startedAt.slice(11, 16)}` : ""}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ConsultantDashboard() {
   const currentUser = useAppSelector((state) => state.auth.user);
   const {
@@ -81,7 +351,6 @@ export function ConsultantDashboard() {
     isError: isDashboardError,
     refetch: refetchDashboard
   } = useGetConsultantDashboardQuery();
-  const { data: patients = [], isLoading: isPatientsLoading } = useCurrentWardPatients();
   const { data: teams = [] } = useGetTeamsQuery();
   const { data: tasks = [] } = useCurrentWardCareTasks();
   const { data: escalations = [] } = useCurrentWardEscalations();
@@ -90,7 +359,12 @@ export function ConsultantDashboard() {
   const team =
     teams.find((t) => t.consultantId === currentUser?.id) ||
     teams.find((t) => t.departmentId === currentUser?.departmentId);
-  const teamPatients = team ? patients.filter((p) => p.medicalTeamId === team.id) : patients;
+  const { data: wardPatients = [], isLoading: isPatientsLoading } = useGetPatientsByWardIdsQuery(
+    team?.wardIds?.length ? team.wardIds : skipToken
+  );
+  const patientsFromDashboard = dashboardPatients(dashboard);
+  const sourcePatients = patientsFromDashboard.length > 0 ? patientsFromDashboard : wardPatients;
+  const teamPatients = team ? sourcePatients.filter((p) => p.medicalTeamId === team.id) : sourcePatients;
   const openTasks = tasks.filter((t) => t.status !== "COMPLETED");
   const openEscalations = escalations.filter((e) => e.status !== "RESOLVED");
   const activeRounds = rounds.filter((r) => r.status === "IN_PROGRESS");
@@ -189,7 +463,7 @@ export function ConsultantDashboard() {
         </div>
 
         <div className="panel rounded">
-          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Backend dashboard payload</div>
+          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Data</div>
           <div className="p-4 text-xs">
             {isDashboardLoading ? (
               <div className="ink-mute">Loading dashboard summary...</div>
@@ -227,13 +501,24 @@ export function PatientListPage({ scope, title }: { scope: "team" | "ward"; titl
   const { data: patients = [], isLoading, isError, refetch } = useCurrentWardPatients();
   const { data: teams = [] } = useGetTeamsQuery();
   const [filter, setFilter] = useState("ALL");
+  const myTeam = useMemo(
+    () =>
+      currentUser
+        ? teams.find((t) => t.consultantId === currentUser.id) ||
+          teams.find((t) => t.departmentId === currentUser.departmentId)
+        : undefined,
+    [currentUser, teams]
+  );
+  const {
+    data: teamWardPatients = [],
+    isLoading: isTeamPatientsLoading,
+    isError: isTeamPatientsError,
+    refetch: refetchTeamPatients
+  } = useGetPatientsByWardIdsQuery(scope === "team" && myTeam?.wardIds?.length ? myTeam.wardIds : skipToken);
 
   const list = useMemo(() => {
-    let filtered = patients;
-    if (scope === "team" && currentUser) {
-      const myTeam =
-        teams.find((t) => t.consultantId === currentUser.id) ||
-        teams.find((t) => t.departmentId === currentUser.departmentId);
+    let filtered = scope === "team" && myTeam?.wardIds?.length ? teamWardPatients : patients;
+    if (scope === "team" && myTeam) {
       if (myTeam) filtered = filtered.filter((p) => p.medicalTeamId === myTeam.id);
     }
     filtered = [...filtered].sort(
@@ -243,25 +528,28 @@ export function PatientListPage({ scope, title }: { scope: "team" | "ward"; titl
     );
     if (filter !== "ALL") filtered = filtered.filter((p) => p.status === filter);
     return filtered;
-  }, [patients, scope, teams, filter, currentUser]);
+  }, [filter, myTeam, patients, scope, teamWardPatients]);
+  const loading = scope === "team" ? isTeamPatientsLoading : isLoading;
+  const failed = scope === "team" ? isTeamPatientsError : isError;
+  const refresh = scope === "team" && myTeam?.wardIds?.length ? refetchTeamPatients : refetch;
 
   return (
     <div className="space-y-4">
       <PageHeader title={title} subtitle={`${list.length} patients`}>
-        <button className="btn" onClick={() => refetch()}><Icons.refresh size={14} />Refresh</button>
+        <button className="btn" onClick={() => refresh()}><Icons.refresh size={14} />Refresh</button>
       </PageHeader>
       <div className="flex items-center gap-2 flex-wrap">
         {["ALL", "ADMITTED", "STABLE", "DETERIORATING", "DISCHARGE_READY"].map((s) => (
           <button key={s} onClick={() => setFilter(s)} className={`btn ${filter === s ? "btn-primary" : ""}`}>
             {s === "ALL" ? "All" : s.replace(/_/g, " ")}
-            <span className="ink-mute ml-1">{s === "ALL" ? patients.length : patients.filter((p) => p.status === s).length}</span>
+            <span className="ink-mute ml-1">{s === "ALL" ? list.length : list.filter((p) => p.status === s).length}</span>
           </button>
         ))}
       </div>
-      {isLoading ? (
+      {loading ? (
         <div className="panel rounded p-6 text-center ink-mute sm:p-12">Loading patients…</div>
-      ) : isError ? (
-        <div className="panel rounded p-6 text-center text-red-700 sm:p-12">Could not load patients. <button className="underline" onClick={() => refetch()}>Retry</button></div>
+      ) : failed ? (
+        <div className="panel rounded p-6 text-center text-red-700 sm:p-12">Could not load patients. <button className="underline" onClick={() => refresh()}>Retry</button></div>
       ) : list.length === 0 ? (
         <div className="panel rounded p-6 text-center ink-mute sm:p-12">No patients match this filter.</div>
       ) : (
@@ -311,11 +599,13 @@ export function PatientListPage({ scope, title }: { scope: "team" | "ward"; titl
 export function PatientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
   const { data: patient, isLoading: isLoadingPatient, isError } = useGetPatientByIdQuery(id || "", { skip: !id });
   const { data: wards = [] } = useGetWardsQuery();
   const { data: teams = [] } = useGetTeamsQuery();
   const { data: tasks = [] } = useGetCareTasksByPatientQuery(id || "", { skip: !id });
   const { data: notes = [] } = useGetClinicalNotesByPatientQuery(id || "", { skip: !id });
+  const [updatePatientStatus, { isLoading: isUpdatingStatus }] = useUpdatePatientStatusMutation();
 
   const [tab, setTab] = useState("overview");
 
@@ -328,6 +618,17 @@ export function PatientDetailPage() {
 
   const ward = getWard(wards, patient.wardId);
   const team = teams.find((t) => t.id === patient.medicalTeamId);
+  const canCompleteDischarge = patient.isDischargeReady && patient.status !== "DISCHARGED";
+  const patientId = patient.id;
+
+  async function completeDischarge() {
+    try {
+      await updatePatientStatus({ patientId, status: "DISCHARGED" }).unwrap();
+      toast({ kind: "success", title: "Patient discharged" });
+    } catch {
+      toast({ kind: "error", title: "Could not complete discharge" });
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -353,6 +654,11 @@ export function PatientDetailPage() {
           </div>
           <div className="flex flex-col items-end gap-2">
             <NEWSBadge score={patient.newsScore} size="lg" />
+            {canCompleteDischarge && (
+              <button className="btn btn-primary" onClick={completeDischarge} disabled={isUpdatingStatus}>
+                <Icons.check size={14} />{isUpdatingStatus ? "Completing..." : "Complete discharge"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -734,6 +1040,68 @@ export function MyTeamPage() {
           </Field>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+export function TeamInvitationsPage() {
+  const toast = useToast();
+  const { data: invites = [], isLoading } = useListPendingInvitesQuery();
+  const { data: teams = [] } = useGetTeamsQuery();
+  const { data: users = [] } = useGetUsersQuery();
+  const [acceptInvite, { isLoading: isAccepting }] = useAcceptInviteMutation();
+  const [declineInvite, { isLoading: isDeclining }] = useDeclineInviteMutation();
+
+  async function respond(inviteId: string, action: "accept" | "decline") {
+    try {
+      if (action === "accept") await acceptInvite(inviteId).unwrap();
+      else await declineInvite(inviteId).unwrap();
+      toast({ kind: "success", title: action === "accept" ? "Invitation accepted" : "Invitation declined" });
+    } catch {
+      toast({ kind: "error", title: "Could not update invitation" });
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <PageHeader title="Invitations" subtitle={`${invites.length} pending`} />
+      {isLoading ? (
+        <div className="panel rounded p-8 text-center ink-mute">Loading invitations...</div>
+      ) : invites.length === 0 ? (
+        <div className="panel rounded p-8 text-center ink-mute">No pending team invitations.</div>
+      ) : (
+        <div className="panel rounded overflow-hidden">
+          <table className="cr">
+            <thead>
+              <tr><th>Team</th><th>Invited user</th><th>Status</th><th>Expires</th><th></th></tr>
+            </thead>
+            <tbody>
+              {invites.map((invite) => {
+                const team = teams.find((t) => t.id === invite.medicalTeamId);
+                const invited = getUser(users, invite.invitedUserId);
+                return (
+                  <tr key={invite.id}>
+                    <td className="font-medium">{team?.name || invite.medicalTeamId}</td>
+                    <td>{invited ? userFullName(invited) : invite.invitedUserId}</td>
+                    <td><span className="chip">{invite.status}</span></td>
+                    <td className="mono text-xs ink-2">{invite.expiresAt?.slice(0, 16).replace("T", " ")}</td>
+                    <td>
+                      <div className="flex justify-end gap-2">
+                        <button className="btn btn-primary px-2 py-1 text-xs" onClick={() => respond(invite.id, "accept")} disabled={isAccepting || isDeclining}>
+                          Accept
+                        </button>
+                        <button className="btn px-2 py-1 text-xs" onClick={() => respond(invite.id, "decline")} disabled={isAccepting || isDeclining}>
+                          Decline
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -1366,3 +1734,4 @@ export function RoundParticipateView() {
     </div>
   );
 }
+

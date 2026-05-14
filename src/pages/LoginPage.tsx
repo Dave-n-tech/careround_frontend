@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Field, Icons } from "@/components/ui";
 import { useForgotPasswordMutation, useLazyGetMeQuery, useLoginMutation, useResetPasswordMutation } from "@/services/api";
 import { appConfig } from "@/utils/config";
@@ -117,9 +117,9 @@ export default function LoginPage() {
               {isLoading ? "Signing in..." : "Sign in"}
             </button>
             <div className="text-xs text-center">
-              <button className="ink-mute hover:underline" type="button" onClick={() => setResetOpen((open) => !open)}>
+              <Link className="ink-mute hover:underline" to="/forgot-password">
                 Forgot password?
-              </button>
+              </Link>
             </div>
             {resetOpen && (
               <div className="space-y-3 rounded border border-[var(--cr-line)] bg-slate-50 p-3">

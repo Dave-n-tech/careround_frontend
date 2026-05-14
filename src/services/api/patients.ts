@@ -1,5 +1,6 @@
 import { api } from "./baseApi";
 import type { Patient, Vitals, NextOfKin } from "@/types/domain";
+import type { FetchBaseQueryError } from "@reduxjs/toolkit/query";
 
 export type AdmitPatientRequest = {
   wardId: string;
@@ -62,6 +63,28 @@ const patientsApi = api.injectEndpoints({
       query: (wardId) => `/patients/ward/${wardId}`,
       providesTags: ["Patients"]
     }),
+    getPatientsByWardIds: builder.query<Patient[], string[]>({
+      async queryFn(wardIds, _api, _extraOptions, fetchWithBQ) {
+        const uniqueWardIds = Array.from(new Set(wardIds.filter(Boolean)));
+        if (uniqueWardIds.length === 0) return { data: [] };
+
+        const results = await Promise.all(
+          uniqueWardIds.map((wardId) => fetchWithBQ(`/patients/ward/${wardId}`))
+        );
+        const failed = results.find((result) => result.error);
+        if (failed?.error) return { error: failed.error as FetchBaseQueryError };
+
+        const byId = new Map<string, Patient>();
+        results.forEach((result) => {
+          ((result.data as Patient[] | undefined) || []).forEach((patient) => {
+            byId.set(patient.id, patient);
+          });
+        });
+
+        return { data: Array.from(byId.values()) };
+      },
+      providesTags: ["Patients"]
+    }),
     searchPatients: builder.query<Patient[], string>({
       query: (q) => `/patients/search?q=${encodeURIComponent(q)}`,
       providesTags: ["Patients"]
@@ -118,6 +141,7 @@ const patientsApi = api.injectEndpoints({
 export const {
   useGetPatientByIdQuery,
   useGetPatientsByWardQuery,
+  useGetPatientsByWardIdsQuery,
   useSearchPatientsQuery,
   useLazySearchPatientsQuery,
   useAdmitPatientMutation,

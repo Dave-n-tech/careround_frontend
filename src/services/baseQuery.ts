@@ -21,8 +21,18 @@ const isEnvelope = (value: unknown): value is BackendEnvelope<unknown> =>
 const realBaseQuery = fetchBaseQuery({
   baseUrl: apiBaseUrl,
   credentials: "include",
-  prepareHeaders: (headers) => {
-    const token = localStorage.getItem("cr_access_token");
+  prepareHeaders: (headers, api) => {
+    const platformEndpoints = new Set([
+      "platformLogin",
+      "listHospitalOnboardingRequests",
+      "getHospitalOnboardingRequest",
+      "reviewHospitalOnboardingRequest",
+      "provisionHospitalTenant",
+      "getHospitals"
+    ]);
+    const token = platformEndpoints.has(api.endpoint)
+      ? localStorage.getItem("cr_platform_access_token")
+      : localStorage.getItem("cr_access_token");
     if (token) headers.set("authorization", `Bearer ${token}`);
     headers.set("accept", "application/json");
     return headers;

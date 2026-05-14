@@ -13,7 +13,7 @@ import type { ChartSeries, RoundHistoryItem } from "@/services/api";
 import { useCurrentWardId } from "@/features/ward/currentWard";
 import { getUser, userFullName } from "@/utils/format";
 
-export default function Reports() {
+export default function Reports({ allWards = false }: { allWards?: boolean }) {
   const [tab, setTab] = useState("completion");
   const wardId = useCurrentWardId();
   const range = useMemo(() => {
@@ -25,7 +25,7 @@ export default function Reports() {
       to: to.toISOString().slice(0, 10)
     };
   }, []);
-  const query = { wardId, ...range };
+  const query = { wardId: allWards ? undefined : wardId, ...range };
 
   const { data: completion, isLoading: loadingCompletion } = useGetTaskCompletionReportQuery(query);
   const { data: overdue, isLoading: loadingOverdue } = useGetOverdueTasksReportQuery(query);
@@ -34,7 +34,7 @@ export default function Reports() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Reports" subtitle={`Last 30 days · ${range.from} to ${range.to}`} />
+      <PageHeader title="Reports" subtitle={`Last 30 days - ${allWards ? "all wards" : "current ward"} - ${range.from} to ${range.to}`} />
       <div className="flex flex-wrap gap-2">
         {[
           ["completion", "Task completion"],
@@ -97,3 +97,4 @@ export function RoundHistoryTable({ rows, loading }: { rows: RoundHistoryItem[];
     </table>
   );
 }
+

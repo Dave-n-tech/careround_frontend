@@ -135,6 +135,9 @@ export const Icons = {
   edit: (p: Omit<IconProps, "d">) => (
     <Icon {...p} d={["M12 20h9", "M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"]} />
   ),
+  trash: (p: Omit<IconProps, "d">) => (
+    <Icon {...p} d={["M3 6h18", "M8 6V4h8v2", "M6 6l1 15h10l1-15", "M10 11v6", "M14 11v6"]} />
+  ),
   alertCircle: (p: Omit<IconProps, "d">) => (
     <Icon {...p} d={["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z", "M12 8v4", "M12 16h.01"]} />
   ),

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Field, Icons, NEWSBadge } from "@/components/ui";
 import { NEWSSparkline } from "@/components/ui/charts";
 import { PageHeader } from "@/layouts/PageHeader";
-import { useCreateEscalationMutation, useRecordVitalsMutation, useGetVitalsHistoryQuery, useCurrentWardPatients } from "@/services/api";
+import { useCreateEscalationMutation, useRecordVitalsMutation, useGetVitalsHistoryQuery, useCurrentWardPatients, useGetOnCallRotationsQuery, useGetUsersQuery } from "@/services/api";
 import { computeNEWS } from "@/utils/news";
 import { patientFullName } from "@/utils/format";
 import { useToast } from "@/components/ui/Toast";
@@ -14,6 +14,8 @@ export default function NurseVitalsForm() {
   const { data: patients = [], isLoading: isLoadingPatients } = useCurrentWardPatients();
   const [recordVitals, { isLoading: isRecording }] = useRecordVitalsMutation();
   const [createEscalation] = useCreateEscalationMutation();
+  const { data: onCallRotations = [] } = useGetOnCallRotationsQuery();
+  const { data: allUsers = [] } = useGetUsersQuery();
   const [patientId, setPatientId] = useState<string>("");
   useEffect(() => {
     if (!patientId && patients.length) setPatientId(patients[0].id);
@@ -24,6 +26,16 @@ export default function NurseVitalsForm() {
   const [vitalsNote, setVitalsNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [escalation, setEscalation] = useState<null | { severity: "RED" | "AMBER"; score: number; role: string; name: string }>(null);
+
+  function getOnCallName(role: "REGISTRAR_ON_CALL" | "CONSULTANT_ON_CALL"): string {
+    const now = new Date().toISOString();
+    const rotation = onCallRotations.find(
+      (r) => r.role === role && r.startTime <= now && r.endTime >= now
+    );
+    if (!rotation) return "On-call clinician";
+    const doctor = allUsers.find((u) => u.id === rotation.doctorId);
+    return doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : "On-call clinician";
+  }
 
   const news = computeNEWS(v);
   const total = news.total;
@@ -52,7 +64,7 @@ export default function NurseVitalsForm() {
         severity: "RED",
         notes: `NEWS ${total} recorded from vitals screen`
       }).unwrap();
-      setEscalation({ severity: "RED", score: total, role: "CONSULTANT", name: "Prof. Adaeze Okafor" });
+      setEscalation({ severity: "RED", score: total, role: "CONSULTANT", name: getOnCallName("CONSULTANT_ON_CALL") });
     } else if (total >= 5) {
       await createEscalation({
         patientId,
@@ -60,7 +72,7 @@ export default function NurseVitalsForm() {
         severity: "AMBER",
         notes: `NEWS ${total} recorded from vitals screen`
       }).unwrap();
-      setEscalation({ severity: "AMBER", score: total, role: "REGISTRAR", name: "Dr. Chinedu Eze" });
+      setEscalation({ severity: "AMBER", score: total, role: "REGISTRAR", name: getOnCallName("REGISTRAR_ON_CALL") });
     } else {
       toast({ kind: "success", title: "Vitals recorded", body: `NEWS ${total} · within range` });
       setTimeout(() => {

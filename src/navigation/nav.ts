@@ -26,40 +26,50 @@ export const NAV: Record<Role, NavItem[]> = {
     { id: "shift-schedules", label: "Shift Schedules", icon: "shift", path: "/admin/shift-schedules" },
     { id: "on-call", label: "On-Call Rotations", icon: "rounds", path: "/admin/on-call" },
     { id: "team-assignment", label: "Team to Ward", icon: "handover", path: "/admin/team-assignment" },
-    { id: "hospital", label: "Hospital Settings", icon: "settings", path: "/admin/hospital" }
+    { id: "reports", label: "Reports", icon: "reports", path: "/admin/reports" },
+    { id: "hospital", label: "Hospital Settings", icon: "settings", path: "/admin/hospital" },
+    { id: "profile", label: "Profile", icon: "team", path: "/profile" }
   ],
   CONSULTANT: [
     { id: "dashboard", label: "Dashboard", icon: "dashboard", path: "/consultant" },
     { id: "patients", label: "My Team's Patients", icon: "patients", path: "/consultant/patients" },
     { id: "round", label: "Ward Round", icon: "rounds", path: "/consultant/round" },
     { id: "team", label: "My Team", icon: "team", path: "/consultant/team" },
-    { id: "escalations", label: "Escalation Inbox", icon: "escalation", path: "/consultant/escalations", badgeKey: "openEscalations" }
+    { id: "invites", label: "Invitations", icon: "bell", path: "/consultant/invitations" },
+    { id: "escalations", label: "Escalation Inbox", icon: "escalation", path: "/consultant/escalations", badgeKey: "openEscalations" },
+    { id: "profile", label: "Profile", icon: "team", path: "/profile" }
   ],
   REGISTRAR: [
     { id: "patients", label: "Ward Patients", icon: "patients", path: "/registrar/patients" },
     { id: "round", label: "Ward Round", icon: "rounds", path: "/registrar/round" },
     { id: "admit", label: "Admit Patient", icon: "plus", path: "/registrar/admit" },
-    { id: "escalations", label: "On-Call Queue", icon: "escalation", path: "/registrar/escalations", badgeKey: "openEscalations" }
+    { id: "escalations", label: "On-Call Queue", icon: "escalation", path: "/registrar/escalations", badgeKey: "openEscalations" },
+    { id: "invites", label: "Invitations", icon: "bell", path: "/registrar/invitations" },
+    { id: "profile", label: "Profile", icon: "team", path: "/profile" }
   ],
   JUNIOR_DOCTOR: [
     { id: "tasks", label: "My Tasks", icon: "tasks", path: "/junior/tasks" },
     { id: "patients", label: "Team Patients", icon: "patients", path: "/junior/patients" },
     { id: "round", label: "Active Round", icon: "rounds", path: "/junior/round" },
-    { id: "handover", label: "Handover Notes", icon: "handover", path: "/junior/handover" }
+    { id: "handover", label: "Handover Notes", icon: "handover", path: "/junior/handover" },
+    { id: "invites", label: "Invitations", icon: "bell", path: "/junior/invitations" },
+    { id: "profile", label: "Profile", icon: "team", path: "/profile" }
   ],
   NURSE: [
     { id: "patients", label: "Ward Patients", icon: "patients", path: "/nurse/patients" },
     { id: "vitals", label: "Record Vitals", icon: "vitals", path: "/nurse/vitals" },
     { id: "tasks", label: "My Tasks", icon: "tasks", path: "/nurse/tasks" },
     { id: "escalation-create", label: "Raise Concern", icon: "escalation", path: "/nurse/escalation" },
-    { id: "handover", label: "Handover Notes", icon: "handover", path: "/nurse/handover" }
+    { id: "handover", label: "Handover Notes", icon: "handover", path: "/nurse/handover" },
+    { id: "profile", label: "Profile", icon: "team", path: "/profile" }
   ],
   WARD_SUPERVISOR: [
     { id: "dashboard", label: "Ward Dashboard", icon: "dashboard", path: "/supervisor" },
     { id: "shifts", label: "Shift Assignment", icon: "shift", path: "/supervisor/shifts", badgeKey: "pendingShifts" },
     { id: "handover", label: "Handover", icon: "handover", path: "/supervisor/handover" },
     { id: "rounds-history", label: "Round History", icon: "rounds", path: "/supervisor/rounds-history" },
-    { id: "reports", label: "Reports", icon: "reports", path: "/supervisor/reports" }
+    { id: "reports", label: "Reports", icon: "reports", path: "/supervisor/reports" },
+    { id: "profile", label: "Profile", icon: "team", path: "/profile" }
   ]
 };
 

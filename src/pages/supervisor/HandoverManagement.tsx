@@ -11,6 +11,7 @@ import {
   useGetPatientsByWardQuery,
   useGetShiftsQuery,
   useGetUsersQuery,
+  useGetWardsQuery,
   useInitiateHandoverMutation
 } from "@/services/api";
 import { useCurrentWardId } from "@/features/ward/currentWard";
@@ -26,6 +27,7 @@ export default function HandoverManagement() {
   const to = new Date(now);
   to.setDate(to.getDate() + 2);
   to.setHours(23, 59, 59, 999);
+  const { data: wards = [] } = useGetWardsQuery();
   const { data: patients = [] } = useGetPatientsByWardQuery(wardId ?? skipToken);
   const { data: currentShift } = useGetCurrentShiftQuery(wardId ?? skipToken);
   const { data: shifts = [] } = useGetShiftsQuery(
@@ -54,6 +56,8 @@ export default function HandoverManagement() {
 
   if (!wardId) return <div className="panel rounded p-6 text-center ink-mute sm:p-12">No ward assigned.</div>;
   if (!currentShift) return <div className="panel rounded p-6 text-center ink-mute sm:p-12">No active shift for this ward.</div>;
+
+  const currentWard = wards.find((w) => w.id === wardId);
 
   async function beginHandover() {
     if (!wardId || !currentShift) return;
@@ -115,7 +119,7 @@ export default function HandoverManagement() {
   if (step === 0) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Initiate handover" subtitle="Soyinka Ward · End of morning shift" />
+        <PageHeader title="Initiate handover" subtitle={`${currentWard?.name ?? "Ward"} · ${currentShift.type.toLowerCase()} shift`} />
         <div className="panel rounded p-5 space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="border hairline rounded p-4">
