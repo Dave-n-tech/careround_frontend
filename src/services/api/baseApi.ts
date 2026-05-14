@@ -4,6 +4,8 @@ import { baseQuery } from "../baseQuery";
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
+  refetchOnFocus: true,
+  refetchOnReconnect: true,
   tagTypes: [
     "Users",
     "Departments",

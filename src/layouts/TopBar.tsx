@@ -6,7 +6,7 @@ import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { clearAuth } from "@/features/auth/authSlice";
 import { appConfig } from "@/utils/config";
 import { useLiveClock } from "@/hooks/useLiveClock";
-import { resolveSearchResultRoute } from "@/utils/searchRoutes";
+import { resolvePatientRoute, resolveSearchResultRoute } from "@/utils/searchRoutes";
 import {
   useGetNotificationsQuery,
   useGetUnreadNotificationCountQuery,
@@ -60,9 +60,9 @@ export default function TopBar() {
     setSearchOpen(false);
   }
 
-  const flatSearchResults = searchResults?.groups.flatMap((group) =>
-    group.results.map((result) => ({ ...result, groupType: group.type }))
-  ) ?? [];
+  // Only show patient results in the dropdown
+  const patientGroup = searchResults?.groups.find((g) => g.type.toLowerCase().includes("patient"));
+  const flatSearchResults = patientGroup?.results.map((result) => ({ ...result, groupType: patientGroup.type })) ?? [];
 
   return (
     <header className="min-h-14 bg-white border-b hairline px-3 py-2 flex flex-wrap items-center gap-2 sm:px-4 md:px-5 md:gap-4">
@@ -76,7 +76,7 @@ export default function TopBar() {
       <div className="relative order-last w-full sm:order-none sm:w-72">
         <input
           className="input pl-8"
-          placeholder="Search patients, staff, tasks"
+          placeholder="Search patients"
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
@@ -102,7 +102,12 @@ export default function TopBar() {
                     key={`${result.type}-${result.id}`}
                     className="block w-full border-b hairline px-3 py-2 text-left last:border-b-0 hover:bg-slate-50"
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => goTo(resolveSearchResultRoute(role, result))}
+                    onClick={() => {
+                      const route = result.routeTarget
+                        ? result.routeTarget.startsWith("/") ? result.routeTarget : `/${result.routeTarget}`
+                        : resolvePatientRoute(role, result.id);
+                      goTo(route);
+                    }}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="truncate text-sm font-medium">{result.title}</span>
@@ -152,7 +157,8 @@ export default function TopBar() {
                     }`}
                     onClick={() => {
                       if (!notification.read) markRead(notification.id);
-                      goTo(notification.routeTarget || `/notifications?selected=${notification.id}`);
+                      navigate(`/notifications?selected=${notification.id}`);
+                      setNotificationsOpen(false);
                     }}
                   >
                     <div className="text-sm font-medium">{notification.title}</div>
@@ -160,6 +166,15 @@ export default function TopBar() {
                   </button>
                 ))
               )}
+            </div>
+            <div className="border-t hairline px-3 py-2">
+              <button
+                className="w-full text-center text-sm font-medium text-[var(--cr-brand)] hover:underline"
+                onClick={() => { navigate("/notifications"); setNotificationsOpen(false); }}
+                type="button"
+              >
+                View all notifications
+              </button>
             </div>
           </div>
         )}

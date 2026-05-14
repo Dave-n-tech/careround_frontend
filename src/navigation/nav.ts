@@ -20,6 +20,7 @@ export const ROLE_BASE: Record<Role, string> = {
 export const NAV: Record<Role, NavItem[]> = {
   ADMIN: [
     { id: "dashboard", label: "Dashboard", icon: "dashboard", path: "/admin" },
+    { id: "admit", label: "Admit Patient", icon: "plus", path: "/admin/admit" },
     { id: "departments", label: "Departments", icon: "building", path: "/admin/departments" },
     { id: "wards", label: "Wards", icon: "bed", path: "/admin/wards" },
     { id: "users", label: "Users", icon: "team", path: "/admin/users" },
@@ -33,6 +34,7 @@ export const NAV: Record<Role, NavItem[]> = {
   CONSULTANT: [
     { id: "dashboard", label: "Dashboard", icon: "dashboard", path: "/consultant" },
     { id: "patients", label: "My Team's Patients", icon: "patients", path: "/consultant/patients" },
+    { id: "tasks", label: "Open Tasks", icon: "tasks", path: "/consultant/tasks" },
     { id: "round", label: "Ward Round", icon: "rounds", path: "/consultant/round" },
     { id: "team", label: "My Team", icon: "team", path: "/consultant/team" },
     { id: "invites", label: "Invitations", icon: "bell", path: "/consultant/invitations" },
@@ -40,6 +42,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { id: "profile", label: "Profile", icon: "team", path: "/profile" }
   ],
   REGISTRAR: [
+    { id: "dashboard", label: "Dashboard", icon: "dashboard", path: "/registrar" },
     { id: "patients", label: "Ward Patients", icon: "patients", path: "/registrar/patients" },
     { id: "round", label: "Ward Round", icon: "rounds", path: "/registrar/round" },
     { id: "admit", label: "Admit Patient", icon: "plus", path: "/registrar/admit" },
@@ -48,6 +51,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { id: "profile", label: "Profile", icon: "team", path: "/profile" }
   ],
   JUNIOR_DOCTOR: [
+    { id: "dashboard", label: "Dashboard", icon: "dashboard", path: "/junior" },
     { id: "tasks", label: "My Tasks", icon: "tasks", path: "/junior/tasks" },
     { id: "patients", label: "Team Patients", icon: "patients", path: "/junior/patients" },
     { id: "round", label: "Active Round", icon: "rounds", path: "/junior/round" },
@@ -56,6 +60,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { id: "profile", label: "Profile", icon: "team", path: "/profile" }
   ],
   NURSE: [
+    { id: "dashboard", label: "Dashboard", icon: "dashboard", path: "/nurse" },
     { id: "patients", label: "Ward Patients", icon: "patients", path: "/nurse/patients" },
     { id: "vitals", label: "Record Vitals", icon: "vitals", path: "/nurse/vitals" },
     { id: "tasks", label: "My Tasks", icon: "tasks", path: "/nurse/tasks" },

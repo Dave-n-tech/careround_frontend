@@ -140,13 +140,19 @@ export default function SupervisorDashboard() {
               <div className="flex justify-between text-sm">
                 <span className="ink-mute">Lead doctor</span>
                 <span className="font-medium">
-                  {currentShift?.leadDoctorId ? getUser(users, currentShift.leadDoctorId)?.firstName || "—" : "—"}
+                  {currentShift?.leadDoctorId
+                    ? (() => { const u = getUser(users, currentShift.leadDoctorId); return u ? `${u.firstName} ${u.lastName}` : "—"; })()
+                    : <span className="ink-mute text-xs">Not assigned</span>
+                  }
                 </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="ink-mute">Nurse in charge</span>
                 <span className="font-medium">
-                  {currentShift?.nurseInChargeId ? getUser(users, currentShift.nurseInChargeId)?.firstName || "—" : "—"}
+                  {currentShift?.nurseInChargeId
+                    ? (() => { const u = getUser(users, currentShift.nurseInChargeId); return u ? `${u.firstName} ${u.lastName}` : "—"; })()
+                    : <span className="ink-mute text-xs">Not assigned</span>
+                  }
                 </span>
               </div>
             </div>
@@ -175,7 +181,7 @@ export default function SupervisorDashboard() {
 
       {dashboardSummary && Object.keys(dashboardSummary).length > 0 && (
         <div className="panel rounded">
-          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Backend dashboard summary</div>
+          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Dashboard summary</div>
           <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
             {Object.entries(dashboardSummary).slice(0, 8).map(([key, value]) => (
               <div key={key} className="border hairline rounded p-3">

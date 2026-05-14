@@ -57,27 +57,38 @@ const baseQueryWithEnvelope: BaseQueryFn<
 
 let refreshPromise: Promise<boolean> | null = null;
 
-async function attemptRefresh(api: Parameters<typeof realBaseQuery>[1]): Promise<boolean> {
+async function attemptRefresh(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
   const refreshToken = localStorage.getItem("cr_refresh_token");
   if (!refreshToken) return false;
 
+  // Use native fetch — NOT realBaseQuery — so prepareHeaders never runs and the
+  // expired access token is never added to the Authorization header. The
+  // /auth/refresh endpoint is public; sending the expired token causes Spring
+  // Security's JwtAuthFilter to reject the request before it reaches the handler.
   refreshPromise = (async () => {
-    const refreshResult = await realBaseQuery(
-      { url: "/auth/refresh", method: "POST", body: { refreshToken } },
-      api,
-      {}
-    );
-    if (refreshResult.error) {
+    try {
+      const response = await fetch(`${apiBaseUrl}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ refreshToken }),
+        credentials: "include"
+      });
+      if (!response.ok) {
+        localStorage.removeItem("cr_access_token");
+        localStorage.removeItem("cr_refresh_token");
+        return false;
+      }
+      const json = await response.json() as BackendEnvelope<{ accessToken: string; refreshToken: string }>;
+      const tokens = json?.data ?? (json as unknown as { accessToken: string; refreshToken: string });
+      if (tokens?.accessToken) localStorage.setItem("cr_access_token", tokens.accessToken);
+      if (tokens?.refreshToken) localStorage.setItem("cr_refresh_token", tokens.refreshToken);
+      return Boolean(tokens?.accessToken);
+    } catch {
       localStorage.removeItem("cr_access_token");
       localStorage.removeItem("cr_refresh_token");
       return false;
     }
-    const envelope = refreshResult.data as BackendEnvelope<{ accessToken: string; refreshToken: string }>;
-    const tokens = envelope?.data ?? (refreshResult.data as { accessToken: string; refreshToken: string });
-    if (tokens?.accessToken) localStorage.setItem("cr_access_token", tokens.accessToken);
-    if (tokens?.refreshToken) localStorage.setItem("cr_refresh_token", tokens.refreshToken);
-    return Boolean(tokens?.accessToken);
   })();
 
   try {
@@ -98,7 +109,7 @@ const baseQueryWithReauth: BaseQueryFn<
     typeof args === "object" && typeof args.url === "string" && args.url.startsWith("/auth/");
 
   if (result.error?.status === 401 && !isAuthEndpoint) {
-    const refreshed = await attemptRefresh(api);
+    const refreshed = await attemptRefresh();
     if (refreshed) {
       result = await baseQueryWithEnvelope(args, api, extraOptions);
     } else {

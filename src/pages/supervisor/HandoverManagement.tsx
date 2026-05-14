@@ -139,13 +139,27 @@ export default function HandoverManagement() {
               </div>
             </div>
           </div>
-          <div className="text-sm ink-2">{wardPatients.length} patients to hand over. Each needs a status summary; mark urgent flags as appropriate.</div>
+          <div className="text-sm ink-2">{wardPatients.length} patient{wardPatients.length === 1 ? "" : "s"} to hand over. Each needs a status summary; mark urgent flags as appropriate.</div>
+          {wardPatients.length === 0 && (
+            <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              No patients in this ward. Handover can only be initiated when there are admitted patients.
+            </div>
+          )}
           {!effectiveHandover && !incomingShift && (
             <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               No incoming shift was returned for this ward. Create or assign the next shift first.
             </div>
           )}
-          <button className="btn btn-primary" onClick={beginHandover} disabled={isInitiating || (!effectiveHandover && !incomingShift)}>
+          {!currentShift?.leadDoctorId && (
+            <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              The outgoing shift has no lead doctor assigned. Assign a lead doctor in Shift Assignment before handover.
+            </div>
+          )}
+          <button
+            className="btn btn-primary"
+            onClick={beginHandover}
+            disabled={isInitiating || wardPatients.length === 0 || (!effectiveHandover && !incomingShift)}
+          >
             {isInitiating ? "Starting..." : "Begin handover →"}
           </button>
         </div>

@@ -55,10 +55,36 @@ export default function Reports({ allWards = false }: { allWards?: boolean }) {
   );
 }
 
-function ReportChart({ loading, series, title }: { loading: boolean; series?: ChartSeries; title: string }) {
+function normalizeChartSeries(raw: unknown): ChartSeries | null {
+  if (!raw) return null;
+  // Expected: { labels: string[], values: number[] }
+  if (
+    typeof raw === "object" &&
+    !Array.isArray(raw) &&
+    Array.isArray((raw as ChartSeries).labels) &&
+    Array.isArray((raw as ChartSeries).values) &&
+    (raw as ChartSeries).labels.length > 0
+  ) {
+    return raw as ChartSeries;
+  }
+  // Fallback: array of { date/label, count/value }
+  if (Array.isArray(raw) && raw.length > 0) {
+    const labels = raw.map((item: Record<string, unknown>) =>
+      String(item.date ?? item.label ?? item.key ?? "—")
+    );
+    const values = raw.map((item: Record<string, unknown>) =>
+      Number(item.count ?? item.value ?? item.total ?? 0)
+    );
+    return { labels, values };
+  }
+  return null;
+}
+
+function ReportChart({ loading, series, title }: { loading: boolean; series?: ChartSeries | unknown; title: string }) {
   if (loading) return <div className="p-6 text-center ink-mute">Loading report...</div>;
-  if (!series || series.labels.length === 0) return <div className="p-6 text-center ink-mute">No report data for this range.</div>;
-  return <BarChart title={title} labels={series.labels} values={series.values} />;
+  const normalized = normalizeChartSeries(series);
+  if (!normalized) return <div className="p-6 text-center ink-mute">No report data for this range.</div>;
+  return <BarChart title={title} labels={normalized.labels} values={normalized.values} />;
 }
 
 export function RoundHistoryTable({ rows, loading }: { rows: RoundHistoryItem[]; loading: boolean }) {

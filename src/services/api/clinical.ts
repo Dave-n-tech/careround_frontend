@@ -13,6 +13,8 @@ export type CreateCareTaskRequest = {
   roundId?: string;
   windowStart: string;
   windowEnd: string;
+  assignedToId?: string;
+  assignedToRole?: string;
 };
 export type AssignTaskRequest = { assignedToId: string; assignedToRole: string };
 

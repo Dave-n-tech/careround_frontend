@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import {
+  AdminAdmitPatient,
   AdminDashboard,
   AdminDepartmentDetail,
   AdminDepartments,
@@ -26,6 +27,7 @@ export default function AdminRoutes() {
       <Route path="users/:id" element={<AdminUserDetail />} />
       <Route path="shift-schedules" element={<AdminShiftSchedules />} />
       <Route path="on-call" element={<AdminOnCall />} />
+      <Route path="admit" element={<AdminAdmitPatient />} />
       <Route path="team-assignment" element={<AdminTeamAssignment />} />
       <Route path="reports" element={<Reports allWards />} />
       <Route path="hospital" element={<AdminHospital />} />

@@ -3,6 +3,8 @@ import { Field, Icons, NEWSBadge, PatientRow, PriorityChip, RoleBadge, useToast 
 import { useAppSelector } from "@/app/hooks";
 import {
   useCurrentWardPatients,
+  useCurrentWardShift,
+  useGetTeamsQuery,
   useGetUsersQuery,
   useCreateRoundMutation,
   useStartRoundMutation,
@@ -59,6 +61,7 @@ const ACUITY_ORDER: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, 
 export default function RoundWizard() {
   const toast = useToast();
   const { data: patients = [], isLoading: isLoadingPatients } = useCurrentWardPatients();
+  const { data: currentShift } = useCurrentWardShift();
   const role = useAppSelector((state) => state.auth.role) || "CONSULTANT";
   const user = useAppSelector((state) => state.auth.user);
   const wardId = useCurrentWardId();
@@ -101,14 +104,22 @@ export default function RoundWizard() {
       setRound((r) => ({
         ...r,
         queue: sortedPatients.map((p) => p.id),
-        leadId: r.leadId || user?.id || ""
+        leadId: r.leadId || currentShift?.leadDoctorId || user?.id || ""
       }));
     }
-  }, [sortedPatients, round.queue.length, user?.id]);
+  }, [currentShift?.leadDoctorId, sortedPatients, round.queue.length, user?.id]);
 
   async function beginRound() {
     if (!wardId || !teamId || !round.leadId) {
       toast({ kind: "error", title: "Missing ward, team, or lead doctor" });
+      return;
+    }
+    if (!currentShift || currentShift.status !== "ACTIVE") {
+      toast({ kind: "error", title: "No active shift for this ward" });
+      return;
+    }
+    if (currentShift.leadDoctorId && round.leadId !== currentShift.leadDoctorId) {
+      toast({ kind: "error", title: "Lead doctor must match the active shift lead" });
       return;
     }
     try {
@@ -187,7 +198,24 @@ export default function RoundWizard() {
 }
 
 function Step0({ round, setRound, onNext }: { round: RoundDraft; setRound: RoundStateSetter; onNext: () => void }) {
-  const { data: users = [] } = useGetUsersQuery();
+  const currentUser = useAppSelector((state) => state.auth.user);
+  const { data: users = [], isLoading: isLoadingUsers } = useGetUsersQuery();
+  const { data: teams = [] } = useGetTeamsQuery();
+
+  const team = teams.find((t) => t.consultantId === currentUser?.id) ||
+    teams.find((t) => t.departmentId === currentUser?.departmentId) ||
+    teams[0];
+
+  // Prefer doctors in the same department; fall back to all clinical doctors
+  const deptId = team?.departmentId || currentUser?.departmentId;
+  const doctors = users.filter((u) => ["CONSULTANT", "REGISTRAR"].includes(u.role) && u.active !== false);
+  const deptDoctors = deptId ? doctors.filter((u) => u.departmentId === deptId) : [];
+  const leadOptions = deptDoctors.length ? deptDoctors : doctors;
+
+  const clinicalUsers = users.filter((u) => ["CONSULTANT", "REGISTRAR", "JUNIOR_DOCTOR", "NURSE"].includes(u.role) && u.active !== false);
+  const teamUsers = deptId ? clinicalUsers.filter((u) => u.departmentId === deptId) : clinicalUsers;
+  const memberOptions = teamUsers.length ? teamUsers : clinicalUsers;
+
   return (
     <div className="panel rounded p-4 space-y-5 max-w-3xl sm:p-6">
       <div>
@@ -203,7 +231,11 @@ function Step0({ round, setRound, onNext }: { round: RoundDraft; setRound: Round
         <Field label="Lead doctor" required>
           <select className="select" value={round.leadId} onChange={(e) => setRound({ ...round, leadId: e.target.value })}>
             <option value="">— Select —</option>
-            {users.filter((u) => ["CONSULTANT", "REGISTRAR"].includes(u.role)).map((u) => (
+            {isLoadingUsers ? (
+              <option disabled>Loading doctors…</option>
+            ) : leadOptions.length === 0 ? (
+              <option disabled>No doctors available</option>
+            ) : leadOptions.map((u) => (
               <option key={u.id} value={u.id}>{userFullName(u)}</option>
             ))}
           </select>
@@ -211,22 +243,28 @@ function Step0({ round, setRound, onNext }: { round: RoundDraft; setRound: Round
       </div>
       <div>
         <div className="field-label mb-2">Team members on this round</div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {users.filter((u) => ["CONSULTANT", "REGISTRAR", "JUNIOR_DOCTOR", "NURSE"].includes(u.role)).map((u) => (
-            <label key={u.id} className="flex items-center gap-2 p-2 border hairline rounded text-sm cursor-pointer hover:bg-slate-50">
-              <input
-                type="checkbox"
-                checked={round.participants.includes(u.id)}
-                onChange={(e) => {
-                  const next = e.target.checked ? [...round.participants, u.id] : round.participants.filter((x) => x !== u.id);
-                  setRound({ ...round, participants: next });
-                }}
-              />
-              <span className="flex-1">{userFullName(u)}</span>
-              <RoleBadge role={u.role} />
-            </label>
-          ))}
-        </div>
+        {isLoadingUsers ? (
+          <div className="text-sm ink-mute">Loading team members…</div>
+        ) : memberOptions.length === 0 ? (
+          <div className="text-sm ink-mute">No team members available.</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {memberOptions.map((u) => (
+              <label key={u.id} className="flex items-center gap-2 p-2 border hairline rounded text-sm cursor-pointer hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={round.participants.includes(u.id)}
+                  onChange={(e) => {
+                    const next = e.target.checked ? [...round.participants, u.id] : round.participants.filter((x) => x !== u.id);
+                    setRound({ ...round, participants: next });
+                  }}
+                />
+                <span className="flex-1">{userFullName(u)}</span>
+                <RoleBadge role={u.role} />
+              </label>
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex justify-end"><button className="btn btn-primary w-full sm:w-auto" onClick={onNext} disabled={!round.leadId}>Continue →</button></div>
     </div>
@@ -234,9 +272,12 @@ function Step0({ round, setRound, onNext }: { round: RoundDraft; setRound: Round
 }
 
 function Step1({ round, onBack, onNext, patients }: { round: RoundDraft; onBack: () => void; onNext: () => void; patients: Patient[] }) {
+  const { data: users = [] } = useGetUsersQuery();
   const queue = round.queue
     .map((id) => patients.find((p) => p.id === id))
     .filter((p): p is Patient => Boolean(p));
+  const leadDoctor = users.find((u) => u.id === round.leadId);
+  const participantUsers = round.participants.map((id) => users.find((u) => u.id === id)).filter(Boolean);
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="panel rounded lg:col-span-2">
@@ -245,7 +286,9 @@ function Step1({ round, onBack, onNext, patients }: { round: RoundDraft; onBack:
           <div className="text-xs ink-mute">By acuity DESC then NEWS DESC</div>
         </div>
         <div>
-          {queue.map((p, i) => (
+          {queue.length === 0 ? (
+            <div className="p-6 text-center text-sm ink-mute">No patients in queue.</div>
+          ) : queue.map((p, i) => (
             <div key={p.id} className="flex items-center gap-3 px-3 py-2.5 border-b hairline">
               <div className="w-6 mono text-xs ink-mute text-center">{i + 1}</div>
               <div className="w-16 mono text-xs">{p.bedNumber || "—"}</div>
@@ -261,11 +304,24 @@ function Step1({ round, onBack, onNext, patients }: { round: RoundDraft; onBack:
       <div className="space-y-4">
         <div className="panel rounded p-4">
           <div className="field-label mb-2">Round details</div>
-          <div className="text-sm space-y-1.5">
+          <div className="text-sm space-y-2">
             <div><span className="ink-mute">Type:</span> <span className="font-medium">{round.type}</span></div>
-            <div><span className="ink-mute">Participants:</span> <span className="font-medium">{round.participants.length}</span></div>
+            <div><span className="ink-mute">Lead doctor:</span> <span className="font-medium">{leadDoctor ? userFullName(leadDoctor) : "—"}</span></div>
             <div><span className="ink-mute">Patients:</span> <span className="font-medium">{round.queue.length}</span></div>
           </div>
+          {participantUsers.length > 0 && (
+            <div className="mt-3 pt-3 border-t hairline">
+              <div className="field-label mb-1.5">Team members on round</div>
+              <div className="space-y-1">
+                {participantUsers.map((u) => u && (
+                  <div key={u.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span>{userFullName(u)}</span>
+                    <RoleBadge role={u.role} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex flex-col gap-2">
           <button className="btn btn-primary justify-center py-2.5" onClick={onNext}>Begin round</button>

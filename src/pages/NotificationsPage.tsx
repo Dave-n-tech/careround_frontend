@@ -88,15 +88,6 @@ export default function NotificationsPage() {
                   <div className="mt-1 text-xs ink-mute">{new Date(selected.createdAt).toLocaleString()}</div>
                 </div>
                 {selected.body && <p className="text-sm ink-2">{selected.body}</p>}
-                {selected.routeTarget && (
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => openNotification(selected.id, selected.routeTarget, selected.read)}
-                    type="button"
-                  >
-                    <Icons.arrow size={14} />Open related page
-                  </button>
-                )}
               </div>
             ) : (
               <div className="text-sm ink-mute">Select a notification to view details.</div>

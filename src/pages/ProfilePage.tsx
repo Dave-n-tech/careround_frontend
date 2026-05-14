@@ -3,11 +3,13 @@ import { PageHeader } from "@/layouts/PageHeader";
 import { useChangePasswordMutation, useGetDashboardMeQuery, useGetMeQuery, useGetDepartmentsQuery } from "@/services/api";
 import { getDept } from "@/utils/format";
 import { useState } from "react";
+import { skipToken } from "@reduxjs/toolkit/query/react";
 
 export default function ProfilePage() {
   const toast = useToast();
   const { data: me, isLoading } = useGetMeQuery();
-  const { data: dashboardMe, isLoading: isLoadingDashboard } = useGetDashboardMeQuery();
+  const isAdmin = me?.role === "ADMIN";
+  const { data: dashboardMe, isLoading: isLoadingDashboard } = useGetDashboardMeQuery(isAdmin ? undefined : skipToken);
   const { data: departments = [] } = useGetDepartmentsQuery();
   const [changePassword, { isLoading: isSaving }] = useChangePasswordMutation();
   const [currentPassword, setCurrentPassword] = useState("");
@@ -50,23 +52,25 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <div className="panel rounded p-4 space-y-4">
-          <div className="field-label">My overview</div>
-          {isLoadingDashboard ? (
-            <div className="text-sm ink-mute">Loading dashboard...</div>
-          ) : dashboardMe && Object.keys(dashboardMe).length > 0 ? (
-            <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-              {Object.entries(dashboardMe).slice(0, 8).map(([key, value]) => (
-                <div key={key} className="rounded border hairline p-3">
-                  <div className="text-xs ink-mute">{key.replace(/([A-Z])/g, " $1").toLowerCase()}</div>
-                  <div className="mt-1 font-semibold">{String(value)}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm ink-mute">No personal dashboard data returned.</div>
-          )}
-        </div>
+        {isAdmin && (
+          <div className="panel rounded p-4 space-y-4">
+            <div className="field-label">My overview</div>
+            {isLoadingDashboard ? (
+              <div className="text-sm ink-mute">Loading dashboard...</div>
+            ) : dashboardMe && Object.keys(dashboardMe).length > 0 ? (
+              <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                {Object.entries(dashboardMe).slice(0, 8).map(([key, value]) => (
+                  <div key={key} className="rounded border hairline p-3">
+                    <div className="text-xs ink-mute">{key.replace(/([A-Z])/g, " $1").toLowerCase()}</div>
+                    <div className="mt-1 font-semibold">{String(value)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm ink-mute">No personal dashboard data returned.</div>
+            )}
+          </div>
+        )}
 
         <div className="panel rounded p-4 space-y-4">
           <div className="field-label">Change password</div>

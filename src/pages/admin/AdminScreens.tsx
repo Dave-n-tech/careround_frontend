@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Field, Icons, Modal, RoleBadge, StatCard, useToast } from "@/components/ui";
 import { PageHeader } from "@/layouts/PageHeader";
+import { AdmissionForm } from "@/pages/clinical/SharedScreens";
 import {
   useGetDepartmentsQuery,
   useGetDepartmentByIdQuery,
@@ -1540,4 +1541,10 @@ export function AdminHospital() {
       </div>
     </div>
   );
+}
+
+// ─── Admit Patient (Admin) ────────────────────────────────────────────────────
+
+export function AdminAdmitPatient() {
+  return <AdmissionForm />;
 }

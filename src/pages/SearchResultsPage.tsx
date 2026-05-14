@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAppSelector } from "@/app/hooks";
 import { PageHeader } from "@/layouts/PageHeader";
 import { useGlobalSearchQuery } from "@/services/api";
-import { resolveSearchResultRoute } from "@/utils/searchRoutes";
+import { resolvePatientRoute } from "@/utils/searchRoutes";
 
 export default function SearchResultsPage() {
   const navigate = useNavigate();
@@ -13,8 +13,10 @@ export default function SearchResultsPage() {
   const query = searchParams.get("q") ?? "";
   const trimmedQuery = query.trim();
   const { data, isFetching } = useGlobalSearchQuery(trimmedQuery.length >= 2 ? trimmedQuery : skipToken);
-  const groups = data?.groups ?? [];
-  const totalResults = groups.reduce((count, group) => count + group.results.length, 0);
+
+  // Only show patient results
+  const patientGroup = data?.groups.find((g) => g.type.toLowerCase().includes("patient"));
+  const patientResults = patientGroup?.results ?? [];
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -25,22 +27,23 @@ export default function SearchResultsPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Search"
-        subtitle="Find patients, staff, tasks, wards, teams, and rounds from one place."
+        title="Patient Search"
+        subtitle="Find patients by name or hospital number."
       />
 
       <form className="panel rounded p-4" onSubmit={submitSearch}>
-        <label className="field-label mb-2 block" htmlFor="dashboard-search-results">
-          Search the hospital
+        <label className="field-label mb-2 block" htmlFor="patient-search">
+          Search patients
         </label>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             key={query}
-            id="dashboard-search-results"
+            id="patient-search"
             name="q"
             className="input"
             defaultValue={query}
-            placeholder="Search patients, staff, tasks"
+            placeholder="Patient name or hospital number"
+            autoFocus
           />
           <button className="btn btn-primary shrink-0" type="submit">
             Search
@@ -49,47 +52,35 @@ export default function SearchResultsPage() {
       </form>
 
       {trimmedQuery.length < 2 ? (
-        <div className="panel rounded p-5 text-sm ink-mute">Enter at least 2 characters to search.</div>
+        <div className="panel rounded p-5 text-sm ink-mute">Enter at least 2 characters to search for patients.</div>
       ) : isFetching ? (
-        <div className="panel rounded p-5 text-sm ink-mute">Searching...</div>
-      ) : totalResults === 0 ? (
-        <div className="panel rounded p-5 text-sm ink-mute">No results found for "{trimmedQuery}".</div>
+        <div className="panel rounded p-5 text-sm ink-mute">Searching…</div>
+      ) : patientResults.length === 0 ? (
+        <div className="panel rounded p-5 text-sm ink-mute">No patients found for "{trimmedQuery}".</div>
       ) : (
-        <div className="space-y-4">
-          <div className="text-sm ink-mute">
-            {totalResults} result{totalResults === 1 ? "" : "s"} for "{trimmedQuery}"
+        <div className="panel rounded overflow-hidden">
+          <div className="border-b hairline px-4 py-3">
+            <div className="text-sm font-semibold">Patients</div>
+            <div className="text-xs ink-mute">{patientResults.length} result{patientResults.length === 1 ? "" : "s"} for "{trimmedQuery}"</div>
           </div>
-          {groups.map((group) => (
-            <section className="panel rounded overflow-hidden" key={group.type}>
-              <div className="border-b hairline px-4 py-3">
-                <div className="text-sm font-semibold">{group.type}</div>
-                <div className="text-xs ink-mute">{group.results.length} result{group.results.length === 1 ? "" : "s"}</div>
-              </div>
-              <div>
-                {group.results.map((result) => {
-                  const route = resolveSearchResultRoute(role, result);
-                  return (
-                    <button
-                      key={`${result.type}-${result.id}`}
-                      className={`block w-full border-b hairline px-4 py-3 text-left last:border-b-0 ${
-                        route ? "hover:bg-slate-50" : "cursor-default"
-                      }`}
-                      disabled={!route}
-                      onClick={() => route && navigate(route)}
-                      type="button"
-                    >
-                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                        <span className="text-sm font-medium">{result.title}</span>
-                        <span className="field-label shrink-0">{result.type}</span>
-                      </div>
-                      {result.subtitle && <div className="mt-1 text-xs ink-mute">{result.subtitle}</div>}
-                      {!route && <div className="mt-1 text-xs ink-mute">No destination is available for this result.</div>}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
+          <div>
+            {patientResults.map((result) => {
+              const route = result.routeTarget
+                ? result.routeTarget.startsWith("/") ? result.routeTarget : `/${result.routeTarget}`
+                : resolvePatientRoute(role, result.id);
+              return (
+                <button
+                  key={result.id}
+                  className="block w-full border-b hairline px-4 py-3 text-left last:border-b-0 hover:bg-slate-50"
+                  onClick={() => route && navigate(route)}
+                  type="button"
+                >
+                  <div className="text-sm font-medium">{result.title}</div>
+                  {result.subtitle && <div className="mt-0.5 text-xs ink-mute">{result.subtitle}</div>}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

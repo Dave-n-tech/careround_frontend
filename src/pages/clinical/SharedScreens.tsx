@@ -25,6 +25,7 @@ import {
   useCreateClinicalNoteMutation,
   useCurrentWardCareTasks,
   useCurrentWardEscalations,
+  useCurrentTeamEscalations,
   useCurrentWardPatients,
   useCurrentWardRounds,
   useGetClinicalNotesByPatientQuery,
@@ -359,9 +360,7 @@ export function ConsultantDashboard() {
   const team =
     teams.find((t) => t.consultantId === currentUser?.id) ||
     teams.find((t) => t.departmentId === currentUser?.departmentId);
-  const { data: wardPatients = [], isLoading: isPatientsLoading } = useGetPatientsByWardIdsQuery(
-    team?.wardIds?.length ? team.wardIds : skipToken
-  );
+  const { data: wardPatients = [], isLoading: isPatientsLoading } = useCurrentWardPatients();
   const patientsFromDashboard = dashboardPatients(dashboard);
   const sourcePatients = patientsFromDashboard.length > 0 ? patientsFromDashboard : wardPatients;
   const teamPatients = team ? sourcePatients.filter((p) => p.medicalTeamId === team.id) : sourcePatients;
@@ -1108,7 +1107,9 @@ export function TeamInvitationsPage() {
 
 export function EscalationInbox({ scope }: { scope: "consultant" | "registrar" }) {
   const toast = useToast();
-  const { data: escalations = [], isLoading } = useCurrentWardEscalations();
+  const wardEsc = useCurrentWardEscalations();
+  const teamEsc = useCurrentTeamEscalations();
+  const { data: escalations = [], isLoading } = scope === "consultant" ? teamEsc : wardEsc;
   const { data: patients = [] } = useCurrentWardPatients();
   const { data: wards = [] } = useGetWardsQuery();
   const { data: users = [] } = useGetUsersQuery();
@@ -1190,6 +1191,16 @@ export function AdmissionForm() {
   const [primaryDiagnosis, setPrimaryDiagnosis] = useState("");
   const [specialtyRequired, setSpecialtyRequired] = useState("");
 
+  const availableTeams = useMemo(
+    () =>
+      teams.filter(
+        (team) =>
+          (!departmentId || team.departmentId === departmentId) &&
+          (!selectedWardId || !team.wardIds?.length || team.wardIds.includes(selectedWardId))
+      ),
+    [departmentId, selectedWardId, teams]
+  );
+
   useEffect(() => {
     if (!departmentId && departments.length) setDepartmentId(departments[0].id);
   }, [departmentId, departments]);
@@ -1199,8 +1210,14 @@ export function AdmissionForm() {
   }, [selectedWardId, wardId]);
 
   useEffect(() => {
-    if (!medicalTeamId && teams.length) setMedicalTeamId(teams[0].id);
-  }, [medicalTeamId, teams]);
+    if (!availableTeams.length) {
+      if (medicalTeamId) setMedicalTeamId("");
+      return;
+    }
+    if (!availableTeams.some((team) => team.id === medicalTeamId)) {
+      setMedicalTeamId(availableTeams[0].id);
+    }
+  }, [availableTeams, medicalTeamId]);
 
   async function submit() {
     if (!firstName || !lastName || !hospitalNumber || !dateOfBirth || !selectedWardId || !medicalTeamId || !primaryDiagnosis) {
@@ -1277,7 +1294,7 @@ export function AdmissionForm() {
             </Field>
             <Field label="Medical team" required>
               <select className="select" value={medicalTeamId} onChange={(e) => setMedicalTeamId(e.target.value)}>
-                {teams.filter((t) => !departmentId || t.departmentId === departmentId).map((t) => (
+                {availableTeams.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
@@ -1293,18 +1310,34 @@ export function AdmissionForm() {
         <div className="space-y-4">
           <div className="panel rounded p-4">
             <div className="field-label mb-2">On-call now (in this department)</div>
-            {onCall.filter((o) => o.departmentId === departmentId).length === 0 && (
-              <div className="text-xs ink-mute">No active on-call.</div>
-            )}
-            {onCall.filter((o) => o.departmentId === departmentId).map((o) => {
-              const staff = getUser(users, o.doctorId);
-              return (
-                <div key={o.id} className="flex flex-col gap-1 text-sm mb-1 sm:flex-row sm:items-center sm:justify-between">
-                  <span>{staff ? userFullName(staff) : "—"}</span>
-                  <RoleBadge role={o.role.includes("CONSULTANT") ? "CONSULTANT" : "REGISTRAR"} />
-                </div>
-              );
-            })}
+            {(() => {
+              const now = Date.now();
+              const active = onCall.filter((o) => {
+                if (o.departmentId !== departmentId) return false;
+                const start = new Date(o.startTime).getTime();
+                const end = new Date(o.endTime).getTime();
+                return now >= start && now <= end;
+              });
+              if (active.length === 0) {
+                const deptAny = onCall.filter((o) => o.departmentId === departmentId);
+                return (
+                  <div className="text-xs ink-mute">
+                    {deptAny.length === 0
+                      ? "No on-call rotations found for this department."
+                      : "No on-call doctors are currently active in this department."}
+                  </div>
+                );
+              }
+              return active.map((o) => {
+                const staff = getUser(users, o.doctorId);
+                return (
+                  <div key={o.id} className="flex flex-col gap-1 text-sm mb-1 sm:flex-row sm:items-center sm:justify-between">
+                    <span>{staff ? userFullName(staff) : "—"}</span>
+                    <RoleBadge role={o.role.includes("CONSULTANT") ? "CONSULTANT" : "REGISTRAR"} />
+                  </div>
+                );
+              });
+            })()}
           </div>
           <button className="btn btn-primary w-full justify-center" onClick={submit} disabled={isLoading}>
             {isLoading ? "Admitting…" : "Admit patient"}
@@ -1317,8 +1350,10 @@ export function AdmissionForm() {
 
 export function MyTasksList({ role }: { role: Role }) {
   const toast = useToast();
+  const currentUser = useAppSelector((state) => state.auth.user);
   const { data: tasks = [], isLoading } = useCurrentWardCareTasks();
   const { data: patients = [] } = useCurrentWardPatients();
+  const { data: users = [] } = useGetUsersQuery();
   const [updateStatus, { isLoading: isUpdating }] = useUpdateCareTaskStatus();
   const [createTask, { isLoading: isCreating }] = useCreateCareTaskMutation();
   const [filter, setFilter] = useState("OPEN");
@@ -1330,8 +1365,12 @@ export function MyTasksList({ role }: { role: Role }) {
   const [priority, setPriority] = useState("ROUTINE");
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
+  const [assignedNurseId, setAssignedNurseId] = useState("");
 
-  let list = tasks.filter((t) => t.assignedToRole === role);
+  // Show tasks assigned to this role OR explicitly assigned to the current user
+  let list = tasks.filter((t) =>
+    t.assignedToRole === role || (currentUser?.id && t.assignedToId === currentUser.id)
+  );
   if (filter === "OPEN") list = list.filter((t) => t.status !== "COMPLETED");
   if (filter === "COMPLETED") list = list.filter((t) => t.status === "COMPLETED");
 
@@ -1349,7 +1388,9 @@ export function MyTasksList({ role }: { role: Role }) {
         description: description || undefined,
         priority,
         windowStart: new Date(windowStart).toISOString(),
-        windowEnd: new Date(windowEnd).toISOString()
+        windowEnd: new Date(windowEnd).toISOString(),
+        assignedToId: assignedNurseId || undefined,
+        assignedToRole: "NURSE"
       }).unwrap();
       toast({ kind: "success", title: "Care plan task created" });
       setOpen(false);
@@ -1360,6 +1401,7 @@ export function MyTasksList({ role }: { role: Role }) {
       setPriority("ROUTINE");
       setWindowStart("");
       setWindowEnd("");
+      setAssignedNurseId("");
     } catch {
       toast({ kind: "error", title: "Could not create task" });
     }
@@ -1426,6 +1468,21 @@ export function MyTasksList({ role }: { role: Role }) {
                 {patients.map((p) => (
                   <option key={p.id} value={p.id}>{p.bedNumber ? `${p.bedNumber} - ` : ""}{patientFullName(p)}</option>
                 ))}
+              </select>
+            </Field>
+          </div>
+          <div className="sm:col-span-2">
+            <Field label="Assign to nurse">
+              <select className="select" value={assignedNurseId} onChange={(e) => setAssignedNurseId(e.target.value)}>
+                <option value="">Unassigned</option>
+                {currentUser?.role === "NURSE" && (
+                  <option value={currentUser.id}>Myself ({currentUser.firstName} {currentUser.lastName})</option>
+                )}
+                {users
+                  .filter((u) => u.role === "NURSE" && u.id !== currentUser?.id && u.active !== false)
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>{userFullName(u)}</option>
+                  ))}
               </select>
             </Field>
           </div>
@@ -1594,6 +1651,11 @@ export function HandoverNotesEntry() {
       </div>
       {isLoading ? (
         <div className="panel rounded p-8 text-center ink-mute">Loading patients…</div>
+      ) : patients.length === 0 ? (
+        <div className="panel rounded p-8 text-center">
+          <div className="text-sm font-medium ink-mute">No patients in this ward</div>
+          <div className="text-xs ink-mute mt-1">Handover notes can only be added when there are admitted patients.</div>
+        </div>
       ) : (
         <div className="space-y-3">
           {patients.map((p) => (
@@ -1625,15 +1687,20 @@ export function HandoverNotesEntry() {
           ))}
         </div>
       )}
-      <div className="flex justify-end">
-        <button
-          className="btn btn-primary"
-          onClick={saveNotes}
-          disabled={isSaving || isInitiating || !hasNotes}
-        >
-          {isSaving || isInitiating ? "Saving..." : "Save handover notes"}
-        </button>
-      </div>
+      {patients.length > 0 && (
+        <div className="flex flex-col gap-1.5 items-end">
+          {!hasNotes && (
+            <p className="text-xs ink-mute">Add a note for at least one patient to save.</p>
+          )}
+          <button
+            className="btn btn-primary"
+            onClick={saveNotes}
+            disabled={isSaving || isInitiating || !hasNotes}
+          >
+            {isSaving || isInitiating ? "Saving..." : "Save handover notes"}
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className="panel rounded overflow-hidden">
           <div className="border-b hairline px-4 py-3">
@@ -1675,6 +1742,99 @@ export function HandoverNotesEntry() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+export function ConsultantTasksPage() {
+  const { data: tasks = [], isLoading } = useCurrentWardCareTasks();
+  const { data: patients = [] } = useCurrentWardPatients();
+  const [updateStatus, { isLoading: isUpdating }] = useUpdateCareTaskStatus();
+  const toast = useToast();
+  const [severityFilter, setSeverityFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string>("OPEN");
+
+  let list = tasks;
+  if (statusFilter === "OPEN") list = list.filter((t) => t.status !== "COMPLETED" && t.status !== "CANCELLED");
+  if (statusFilter === "COMPLETED") list = list.filter((t) => t.status === "COMPLETED");
+  if (statusFilter === "OVERDUE") list = list.filter((t) => t.status === "OVERDUE");
+  if (severityFilter !== "ALL") list = list.filter((t) => t.priority === severityFilter);
+
+  const openCount = tasks.filter((t) => t.status !== "COMPLETED" && t.status !== "CANCELLED").length;
+  const overdueCount = tasks.filter((t) => t.status === "OVERDUE").length;
+  const urgentCount = tasks.filter((t) => (t.priority === "URGENT" || t.priority === "EMERGENCY") && t.status !== "COMPLETED").length;
+
+  return (
+    <div className="space-y-4">
+      <PageHeader title="Open tasks" subtitle={`${openCount} open · ${overdueCount} overdue · ${urgentCount} urgent`} />
+      <div className="flex flex-wrap gap-2">
+        <div className="flex gap-1">
+          {["OPEN", "OVERDUE", "COMPLETED", "ALL"].map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={`btn text-xs px-3 ${statusFilter === s ? "btn-primary" : ""}`}
+              onClick={() => setStatusFilter(s)}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1">
+          {["ALL", "ROUTINE", "URGENT", "EMERGENCY"].map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`btn text-xs px-3 ${severityFilter === p ? "btn-primary" : ""}`}
+              onClick={() => setSeverityFilter(p)}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      </div>
+      {isLoading ? (
+        <div className="panel rounded p-8 text-center ink-mute">Loading tasks…</div>
+      ) : list.length === 0 ? (
+        <div className="panel rounded p-8 text-center ink-mute">No tasks match the selected filters.</div>
+      ) : (
+        <div className="space-y-2">
+          {list.map((t) => {
+            const patient = patients.find((p) => p.id === t.patientId);
+            return (
+              <div key={t.id} className="panel rounded p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <PriorityChip priority={t.priority} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">{t.title}</div>
+                  <div className="text-xs ink-mute">
+                    {patient ? patientFullName(patient) : "—"} · {t.assignedToRole || "Unassigned"} · Due {t.windowEnd?.slice(0, 16).replace("T", " ")}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`chip text-xs ${t.status === "OVERDUE" ? "bg-red-100 text-red-700" : t.status === "COMPLETED" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>{t.status}</span>
+                  {t.status !== "COMPLETED" && (
+                    <button
+                      type="button"
+                      className="btn text-xs px-2"
+                      disabled={isUpdating}
+                      onClick={async () => {
+                        try {
+                          await updateStatus({ taskId: t.id, status: "COMPLETED" });
+                          toast({ kind: "success", title: "Task completed" });
+                        } catch {
+                          toast({ kind: "error", title: "Could not update task" });
+                        }
+                      }}
+                    >
+                      Complete
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
