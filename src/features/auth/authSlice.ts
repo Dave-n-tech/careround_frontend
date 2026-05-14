@@ -14,14 +14,29 @@ type AuthState = {
 };
 
 const persistedAccessToken = localStorage.getItem("cr_access_token");
-const persistedRefreshToken = localStorage.getItem("cr_refresh_token");
+const persistedRole = localStorage.getItem("cr_role") as Role | null;
+const persistedUser: User | null = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("cr_user") || "null");
+  } catch {
+    return null;
+  }
+})();
 
+// If we have both a token and a cached user, start as authenticated immediately
+// so page reloads and tab switches never trigger a logout.
+// If we have a token but no user (e.g. first load after a deploy), start in
+// "loading" so App.tsx can call getMe once to populate user data.
 const initialState: AuthState = {
-  status: persistedAccessToken ? "loading" : "idle",
-  user: null,
-  role: null,
+  status: persistedAccessToken
+    ? persistedUser
+      ? "authenticated"
+      : "loading"
+    : "idle",
+  user: persistedUser,
+  role: persistedRole,
   accessToken: persistedAccessToken,
-  refreshToken: persistedRefreshToken,
+  refreshToken: null,
   error: null
 };
 
@@ -38,6 +53,8 @@ const authSlice = createSlice({
       state.error = null;
       localStorage.removeItem("cr_access_token");
       localStorage.removeItem("cr_refresh_token");
+      localStorage.removeItem("cr_role");
+      localStorage.removeItem("cr_user");
     }
   },
   extraReducers: (builder) => {
@@ -47,32 +64,18 @@ const authSlice = createSlice({
       state.error = null;
     });
     builder.addMatcher(authApi.endpoints.login.matchFulfilled, (state, { payload }) => {
-      // API returns JwtResponse: { accessToken, refreshToken, userId, hospitalId, role, ... }
-      // No user object — we store tokens and then getMe fills in the user.
       const accessToken = payload.accessToken || null;
-      const refreshToken = payload.refreshToken || null;
       state.accessToken = accessToken;
-      state.refreshToken = refreshToken;
-      // Pre-set role from JWT response so routing works before getMe completes
+      state.refreshToken = null;
       state.role = (payload.role as Role) || null;
       if (accessToken) localStorage.setItem("cr_access_token", accessToken);
-      if (refreshToken) localStorage.setItem("cr_refresh_token", refreshToken);
-      // Status stays "loading" until getMe resolves
+      if (payload.role) localStorage.setItem("cr_role", payload.role);
+      // Status stays "loading" until getMe resolves and writes the user to state
       state.status = "loading";
     });
     builder.addMatcher(authApi.endpoints.login.matchRejected, (state) => {
       state.status = "error";
       state.error = "Login failed";
-    });
-
-    // ── Token refresh ─────────────────────────────────────────────────────
-    builder.addMatcher(authApi.endpoints.refreshToken.matchFulfilled, (state, { payload }) => {
-      const accessToken = payload.accessToken || null;
-      const refreshToken = payload.refreshToken || null;
-      state.accessToken = accessToken;
-      state.refreshToken = refreshToken;
-      if (accessToken) localStorage.setItem("cr_access_token", accessToken);
-      if (refreshToken) localStorage.setItem("cr_refresh_token", refreshToken);
     });
 
     // ── getMe — populates user after login ────────────────────────────────
@@ -81,16 +84,16 @@ const authSlice = createSlice({
       state.role = payload.role;
       state.status = "authenticated";
       state.error = null;
+      // Persist so page reloads restore authenticated state without a network call
+      localStorage.setItem("cr_user", JSON.stringify(payload));
+      localStorage.setItem("cr_role", String(payload.role));
     });
     builder.addMatcher(authApi.endpoints.getMe.matchRejected, (state) => {
+      // Do NOT clear the access token — the server may be temporarily down.
+      // A genuine 401 is handled by baseQuery dispatching cr:auth-expired → clearAuth.
       state.user = null;
-      state.role = null;
-      state.accessToken = null;
-      state.refreshToken = null;
       state.status = "error";
       state.error = "Unable to load session";
-      localStorage.removeItem("cr_access_token");
-      localStorage.removeItem("cr_refresh_token");
     });
   }
 });

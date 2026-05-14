@@ -58,6 +58,20 @@ type RoundStateSetter = Dispatch<SetStateAction<RoundDraft>>;
 
 const ACUITY_ORDER: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
 
+function todayAtTimeIso(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hours || 0, minutes || 0, 0, 0);
+  return date.toISOString();
+}
+
+function todayAtTime(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hours || 0, minutes || 0, 0, 0);
+  return date;
+}
+
 export default function RoundWizard() {
   const toast = useToast();
   const { data: patients = [], isLoading: isLoadingPatients } = useCurrentWardPatients();
@@ -546,7 +560,10 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
 
   async function add() {
     if (!draft.title || !round.roundId) return;
-    const today = new Date().toISOString().slice(0, 10);
+    if (todayAtTime(draft.windowEnd).getTime() <= todayAtTime(draft.windowStart).getTime()) {
+      toast({ kind: "error", title: "Task window end must be after start" });
+      return;
+    }
     try {
       await createCareTask({
         patientId: p!.id,
@@ -555,8 +572,8 @@ function Step4({ round, setRound, onBack, onNextPatient, patients }: { round: Ro
         title: draft.title,
         priority: draft.priority,
         roundId: round.roundId,
-        windowStart: `${today}T${draft.windowStart}:00`,
-        windowEnd: `${today}T${draft.windowEnd}:00`
+        windowStart: todayAtTimeIso(draft.windowStart),
+        windowEnd: todayAtTimeIso(draft.windowEnd)
       }).unwrap();
       const next = [...tasks, { ...draft, id: "t_" + Math.random().toString(36).slice(2, 7) }];
       setTasks(next);

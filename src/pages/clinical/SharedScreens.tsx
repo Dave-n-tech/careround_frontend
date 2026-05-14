@@ -1353,7 +1353,6 @@ export function MyTasksList({ role }: { role: Role }) {
   const currentUser = useAppSelector((state) => state.auth.user);
   const { data: tasks = [], isLoading } = useCurrentWardCareTasks();
   const { data: patients = [] } = useCurrentWardPatients();
-  const { data: users = [] } = useGetUsersQuery();
   const [updateStatus, { isLoading: isUpdating }] = useUpdateCareTaskStatus();
   const [createTask, { isLoading: isCreating }] = useCreateCareTaskMutation();
   const [filter, setFilter] = useState("OPEN");
@@ -1365,7 +1364,6 @@ export function MyTasksList({ role }: { role: Role }) {
   const [priority, setPriority] = useState("ROUTINE");
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
-  const [assignedNurseId, setAssignedNurseId] = useState("");
 
   // Show tasks assigned to this role OR explicitly assigned to the current user
   let list = tasks.filter((t) =>
@@ -1379,6 +1377,10 @@ export function MyTasksList({ role }: { role: Role }) {
       toast({ kind: "error", title: "Fill all required task fields" });
       return;
     }
+    if (new Date(windowEnd).getTime() <= new Date(windowStart).getTime()) {
+      toast({ kind: "error", title: "Task window end must be after start" });
+      return;
+    }
     try {
       await createTask({
         patientId,
@@ -1388,9 +1390,7 @@ export function MyTasksList({ role }: { role: Role }) {
         description: description || undefined,
         priority,
         windowStart: new Date(windowStart).toISOString(),
-        windowEnd: new Date(windowEnd).toISOString(),
-        assignedToId: assignedNurseId || undefined,
-        assignedToRole: "NURSE"
+        windowEnd: new Date(windowEnd).toISOString()
       }).unwrap();
       toast({ kind: "success", title: "Care plan task created" });
       setOpen(false);
@@ -1401,7 +1401,6 @@ export function MyTasksList({ role }: { role: Role }) {
       setPriority("ROUTINE");
       setWindowStart("");
       setWindowEnd("");
-      setAssignedNurseId("");
     } catch {
       toast({ kind: "error", title: "Could not create task" });
     }
@@ -1468,21 +1467,6 @@ export function MyTasksList({ role }: { role: Role }) {
                 {patients.map((p) => (
                   <option key={p.id} value={p.id}>{p.bedNumber ? `${p.bedNumber} - ` : ""}{patientFullName(p)}</option>
                 ))}
-              </select>
-            </Field>
-          </div>
-          <div className="sm:col-span-2">
-            <Field label="Assign to nurse">
-              <select className="select" value={assignedNurseId} onChange={(e) => setAssignedNurseId(e.target.value)}>
-                <option value="">Unassigned</option>
-                {currentUser?.role === "NURSE" && (
-                  <option value={currentUser.id}>Myself ({currentUser.firstName} {currentUser.lastName})</option>
-                )}
-                {users
-                  .filter((u) => u.role === "NURSE" && u.id !== currentUser?.id && u.active !== false)
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>{userFullName(u)}</option>
-                  ))}
               </select>
             </Field>
           </div>
