@@ -139,6 +139,12 @@ export interface SoapContent {
   plan: string;
 }
 
+export interface AdministrationSlot {
+  scheduledTime: string;
+  completedAt?: string;
+  completedByName?: string;
+}
+
 export interface Prescription {
   id: string;
   patientId: string;
@@ -151,7 +157,7 @@ export interface Prescription {
   frequencyHours: number;
   totalDoses: number;
   startTime: string;
-  administrationTimes: string[];
+  administrationTimes: AdministrationSlot[];
   confirmedById: string;
   confirmedAt: string;
   status: PrescriptionStatus;

@@ -25,6 +25,17 @@ export interface AddPrescriptionRequest {
   startTime: string;
 }
 
+export interface UpdatePrescriptionRequest {
+  prescriptionId: string;
+  patientId: string;
+  drugName?: string;
+  dose?: string;
+  route?: string;
+  frequencyHours?: number;
+  totalDoses?: number;
+  startTime?: string;
+}
+
 export interface CompleteTaskRequest {
   taskId: string;
   actualDoseGiven?: string;
@@ -46,6 +57,14 @@ export const prescriptionsApi = api.injectEndpoints({
         { type: "Prescriptions", id: arg.patientId },
         "MedicationTasks",
       ],
+    }),
+    updatePrescription: build.mutation<PrescriptionEnriched, UpdatePrescriptionRequest>({
+      query: ({ prescriptionId, patientId: _pid, ...body }) => ({
+        url: `/prescriptions/${prescriptionId}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (_r, _e, arg) => [{ type: "Prescriptions", id: arg.patientId }],
     }),
     discontinuePrescription: build.mutation<PrescriptionEnriched, { prescriptionId: string; patientId: string }>({
       query: ({ prescriptionId }) => ({
@@ -73,6 +92,7 @@ export const prescriptionsApi = api.injectEndpoints({
 export const {
   useGetPatientPrescriptionsQuery,
   useAddPrescriptionMutation,
+  useUpdatePrescriptionMutation,
   useDiscontinuePrescriptionMutation,
   useGetMedicationTasksQuery,
   useCompleteTaskMutation,

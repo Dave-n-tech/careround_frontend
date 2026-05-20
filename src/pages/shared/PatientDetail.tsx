@@ -8,12 +8,13 @@ import { useGetPatientNotesQuery, useAddNoteMutation } from "@/services/api/clin
 import {
   useGetPatientPrescriptionsQuery,
   useAddPrescriptionMutation,
+  useUpdatePrescriptionMutation,
   useDiscontinuePrescriptionMutation,
 } from "@/services/api/prescriptions";
 import {
   MOCK_PATIENTS, MOCK_VITALS, MOCK_NOTES, MOCK_PRESCRIPTIONS,
 } from "@/lib/mock-data";
-import type { NoteType, SoapContent } from "@/types/domain";
+import type { NoteType, SoapContent, AdministrationSlot } from "@/types/domain";
 import type { PrescriptionEnriched, PatientVitalsEnriched } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
@@ -516,39 +517,49 @@ function NotesTab({
 
 // ─── Tab 3 — Medications ──────────────────────────────────────────────────────
 
-function TimeChip({ time, completedBy }: { time: string; completedBy?: string }) {
-  const [open, setOpen] = useState(false);
+function TimeChip({ slot }: { slot: AdministrationSlot }) {
   const now = new Date();
-  const t = new Date(time);
+  const t = new Date(slot.scheduledTime);
   const diff = (t.getTime() - now.getTime()) / 60000;
   const status: "pending" | "due-soon" | "completed" | "overdue" =
-    completedBy ? "completed" :
+    slot.completedAt ? "completed" :
     t < now ? "overdue" :
     diff <= 30 ? "due-soon" :
     "pending";
 
   const chipClass =
-    status === "completed" ? "bg-green-500 text-white cursor-pointer" :
+    status === "completed" ? "bg-green-500 text-white" :
     status === "overdue" ? "bg-red-500 text-white" :
     status === "due-soon" ? "bg-amber-400 text-white" :
     "bg-[var(--cr-surface-3)] text-[var(--cr-muted)]";
 
+  const tooltipText =
+    status === "completed"
+      ? slot.completedByName ? `Administered by ${slot.completedByName}` : "Administered"
+      : status === "overdue"
+      ? `Not administered — due ${fmtTime(slot.scheduledTime)}`
+      : null;
+
   return (
-    <div className="relative">
-      <button
-        className={`px-2 py-1 rounded text-xs font-medium ${chipClass}`}
-        onClick={() => (status === "completed" || status === "overdue") && setOpen((o) => !o)}
-      >
-        {fmtTime(time)}
+    <div className="relative group flex flex-col items-center gap-0.5">
+      <span className={`px-2 py-1 rounded text-xs font-medium ${chipClass}`}>
+        {fmtTime(slot.scheduledTime)}
         {status === "completed" && <span className="ml-1">✓</span>}
         {status === "overdue" && <span className="ml-1">!</span>}
-      </button>
-      {open && (
-        <div className="absolute bottom-full left-0 mb-1 w-52 bg-white border border-[var(--cr-line)] rounded shadow-lg p-2 text-xs z-10">
-          {status === "completed"
-            ? completedBy ? `Administered by ${completedBy}` : "Administered"
-            : `Not administered — was due at ${fmtTime(time)}`}
-          <button className="ml-2 text-[var(--cr-muted)]" onClick={() => setOpen(false)}>✕</button>
+      </span>
+
+      {/* Mobile: show first name inline below the chip */}
+      {status === "completed" && slot.completedByName && (
+        <span className="sm:hidden text-[10px] text-[var(--cr-muted)] leading-tight text-center">
+          {slot.completedByName.split(" ")[0]}
+        </span>
+      )}
+
+      {/* Desktop: dark tooltip on hover */}
+      {tooltipText && (
+        <div className="hidden sm:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[var(--cr-ink)] text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 shadow-sm">
+          {tooltipText}
+          <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[var(--cr-ink)]" />
         </div>
       )}
     </div>
@@ -594,15 +605,15 @@ function AddMedModal({ open, onClose, patientId }: { open: boolean; onClose: () 
   return (
     <Modal open={open} onClose={onClose} title="Add Medication">
       <form onSubmit={handleSave} className="px-6 py-5 flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Drug Name *" value={form.drugName} onChange={(e) => setForm((f) => ({ ...f, drugName: e.target.value }))} />
           <Input label="Dose *" value={form.dose} onChange={(e) => setForm((f) => ({ ...f, dose: e.target.value }))} placeholder="e.g. 500mg" />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Route *" value={form.route} onChange={(e) => setForm((f) => ({ ...f, route: e.target.value }))} placeholder="e.g. oral, IV" />
           <Input label="Frequency (hours)" type="number" min={1} value={form.frequencyHours} onChange={(e) => setForm((f) => ({ ...f, frequencyHours: e.target.value }))} />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Total Doses" type="number" min={1} value={form.totalDoses} onChange={(e) => setForm((f) => ({ ...f, totalDoses: e.target.value }))} />
           <Input label="Start Time" type="datetime-local" value={form.startTime} onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} />
         </div>
@@ -615,11 +626,70 @@ function AddMedModal({ open, onClose, patientId }: { open: boolean; onClose: () 
   );
 }
 
+function EditMedModal({
+  open, onClose, rx, patientId,
+}: {
+  open: boolean; onClose: () => void; rx: PrescriptionEnriched; patientId: string;
+}) {
+  const [updatePrescription] = useUpdatePrescriptionMutation();
+  const [form, setForm] = useState({
+    drugName: rx.drugName,
+    dose: rx.dose,
+    route: rx.route,
+    frequencyHours: String(rx.frequencyHours),
+    totalDoses: String(rx.totalDoses),
+    startTime: new Date(rx.startTime).toISOString().slice(0, 16),
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await updatePrescription({
+        prescriptionId: rx.id,
+        patientId,
+        drugName: form.drugName,
+        dose: form.dose,
+        route: form.route,
+        frequencyHours: Number(form.frequencyHours),
+        totalDoses: Number(form.totalDoses),
+        startTime: new Date(form.startTime).toISOString(),
+      }).unwrap();
+      onClose();
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Edit Medication">
+      <form onSubmit={handleSave} className="px-6 py-5 flex flex-col gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input label="Drug Name *" value={form.drugName} onChange={(e) => setForm((f) => ({ ...f, drugName: e.target.value }))} />
+          <Input label="Dose *" value={form.dose} onChange={(e) => setForm((f) => ({ ...f, dose: e.target.value }))} placeholder="e.g. 500mg" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input label="Route *" value={form.route} onChange={(e) => setForm((f) => ({ ...f, route: e.target.value }))} placeholder="e.g. oral, IV" />
+          <Input label="Frequency (hours)" type="number" min={1} value={form.frequencyHours} onChange={(e) => setForm((f) => ({ ...f, frequencyHours: e.target.value }))} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input label="Total Doses" type="number" min={1} value={form.totalDoses} onChange={(e) => setForm((f) => ({ ...f, totalDoses: e.target.value }))} />
+          <Input label="Start Time" type="datetime-local" value={form.startTime} onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} />
+        </div>
+        <div className="flex justify-end gap-3 pt-2 border-t border-[var(--cr-line)]">
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button type="submit" variant="primary" loading={saving}>Save Changes</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: boolean }) {
   const { data: rxData } = useGetPatientPrescriptionsQuery(patientId);
   const [discontinuePrescription] = useDiscontinuePrescriptionMutation();
   const prescriptions = rxData ?? MOCK_PRESCRIPTIONS[patientId] ?? [];
   const [addMedOpen, setAddMedOpen] = useState(false);
+  const [editRx, setEditRx] = useState<PrescriptionEnriched | null>(null);
   const [confirmDisc, setConfirmDisc] = useState<string | null>(null); // prescriptionId
   const [discarding, setDiscarding] = useState(false);
 
@@ -635,7 +705,7 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
   // Collect all unique day keys across every prescription
   const daySet = new Set<string>();
   for (const rx of prescriptions) {
-    for (const t of rx.administrationTimes) daySet.add(dayKey(t));
+    for (const slot of rx.administrationTimes) daySet.add(dayKey(slot.scheduledTime));
   }
   const days = [...daySet].sort();
   const todayStr = dayKey(new Date().toISOString());
@@ -686,12 +756,12 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
                 const isDiscontinued = rx.status === "DISCONTINUED";
                 const rowBg = idx % 2 === 0 ? "#ffffff" : "var(--cr-surface-2)";
 
-                // Group this prescription's times by day
-                const timesByDay: Record<string, string[]> = {};
-                for (const t of rx.administrationTimes) {
-                  const dk = dayKey(t);
-                  if (!timesByDay[dk]) timesByDay[dk] = [];
-                  timesByDay[dk].push(t);
+                // Group this prescription's slots by day
+                const slotsByDay: Record<string, AdministrationSlot[]> = {};
+                for (const slot of rx.administrationTimes) {
+                  const dk = dayKey(slot.scheduledTime);
+                  if (!slotsByDay[dk]) slotsByDay[dk] = [];
+                  slotsByDay[dk].push(slot);
                 }
 
                 return (
@@ -710,19 +780,30 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
                           Discontinued
                         </span>
                       ) : canWrite ? (
-                        <button
-                          className="mt-1.5 text-xs text-[var(--cr-muted)] hover:text-[var(--cr-danger)] transition-colors"
-                          onClick={() => setConfirmDisc(rx.id)}
-                        >
-                          Discontinue
-                        </button>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-[var(--cr-accent)] text-[var(--cr-accent)] hover:bg-teal-50"
+                            onClick={() => setEditRx(rx)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline-destructive"
+                            size="sm"
+                            onClick={() => setConfirmDisc(rx.id)}
+                          >
+                            Discontinue
+                          </Button>
+                        </div>
                       ) : null}
                     </td>
 
                     {/* Day cells */}
                     {days.map((d) => {
                       const isToday = d === todayStr;
-                      const times = timesByDay[d] ?? [];
+                      const slots = slotsByDay[d] ?? [];
                       return (
                         <td
                           key={d}
@@ -731,8 +812,8 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
                           }`}
                         >
                           <div className="flex flex-col gap-1 items-center">
-                            {times.map((t) => (
-                              <TimeChip key={t} time={t} />
+                            {slots.map((slot) => (
+                              <TimeChip key={slot.scheduledTime} slot={slot} />
                             ))}
                           </div>
                         </td>
@@ -747,6 +828,15 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
       )}
 
       <AddMedModal open={addMedOpen} onClose={() => setAddMedOpen(false)} patientId={patientId} />
+
+      {editRx && (
+        <EditMedModal
+          open={!!editRx}
+          onClose={() => setEditRx(null)}
+          rx={editRx}
+          patientId={patientId}
+        />
+      )}
 
       <ConfirmModal
         open={!!confirmDisc}
@@ -1057,7 +1147,7 @@ export default function PatientDetail() {
               onStartRecording={() => setRecording(true)}
             />
           )}
-          {activeTab === "medications" && <MedicationsTab patientId={patient.id} canWrite={isNurse} />}
+          {activeTab === "medications" && <MedicationsTab patientId={patient.id} canWrite={canWrite} />}
           {activeTab === "vitals" && <VitalsTab patientId={patient.id} canWrite={isNurse} />}
         </div>
       </div>
