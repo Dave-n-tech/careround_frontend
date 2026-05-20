@@ -99,7 +99,7 @@ function UserModal({ open, onClose, existing, onSave }: UserModalProps) {
   return (
     <Modal open={open} onClose={onClose} title={existing ? "Edit User" : "Add User"}>
       <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="First Name *"
             value={form.firstName}
@@ -216,7 +216,7 @@ export default function AdminUsers() {
   ];
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-[var(--cr-ink)]">Users</h1>

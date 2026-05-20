@@ -16,6 +16,11 @@ interface ChangePasswordRequest {
   newPassword: string;
 }
 
+interface ActivateAccountRequest {
+  token: string;
+  password: string;
+}
+
 export const authApi = api.injectEndpoints({
   endpoints: (build) => ({
     login: build.mutation<JwtResponse, LoginRequest>({
@@ -30,6 +35,9 @@ export const authApi = api.injectEndpoints({
     changePassword: build.mutation<void, ChangePasswordRequest>({
       query: (body) => ({ url: "/auth/change-password", method: "POST", body }),
     }),
+    activateAccount: build.mutation<void, ActivateAccountRequest>({
+      query: (body) => ({ url: "/auth/activate-account", method: "POST", body }),
+    }),
     getMe: build.query<User, void>({
       query: () => "/users/me",
       providesTags: ["Me"],
@@ -43,6 +51,7 @@ export const {
   useRefreshMutation,
   useLogoutMutation,
   useChangePasswordMutation,
+  useActivateAccountMutation,
   useGetMeQuery,
   useLazyGetMeQuery,
 } = authApi;

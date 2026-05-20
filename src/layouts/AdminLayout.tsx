@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -7,6 +8,7 @@ import {
   Settings,
   LogOut,
   Activity,
+  Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
@@ -26,6 +28,7 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const user = useAppSelector((s) => s.auth.user);
   const [logout] = useLogoutMutation();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   async function handleLogout() {
     try {
@@ -38,9 +41,23 @@ export default function AdminLayout() {
   }
 
   return (
-    <div className="flex h-screen bg-[var(--cr-bg)]">
+    <div className="flex h-screen bg-[var(--cr-bg)] overflow-hidden">
+      {/* Mobile backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-60 shrink-0 flex flex-col bg-white border-r border-[var(--cr-line)]">
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 w-60 flex flex-col bg-white border-r border-[var(--cr-line)] transition-transform duration-200",
+          "md:relative md:z-auto md:translate-x-0 md:shrink-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
         {/* Logo */}
         <div className="px-5 py-5 border-b border-[var(--cr-line)]">
           <div className="flex items-center gap-2">
@@ -59,6 +76,7 @@ export default function AdminLayout() {
             <NavLink
               key={to}
               to={to}
+              onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
@@ -94,10 +112,30 @@ export default function AdminLayout() {
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-y-auto">
-        <Outlet />
-      </main>
+      {/* Main column */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Mobile top bar */}
+        <header className="md:hidden h-14 bg-white border-b border-[var(--cr-line)] flex items-center px-4 gap-3 shrink-0">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-1.5 rounded-md text-[var(--cr-ink-2)] hover:bg-[var(--cr-surface-3)]"
+            aria-label="Open menu"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-[var(--cr-accent)] flex items-center justify-center">
+              <Activity size={14} className="text-white" />
+            </div>
+            <span className="font-display font-bold text-[var(--cr-ink)] text-sm">CareRound</span>
+          </div>
+        </header>
+
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

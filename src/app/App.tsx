@@ -8,6 +8,9 @@ import RequireRole from "@/routes/RequireRole";
 import AdminLayout from "@/layouts/AdminLayout";
 import TopNavLayout from "@/layouts/TopNavLayout";
 import LoginPage from "@/pages/LoginPage";
+import LandingPage from "@/pages/LandingPage";
+import SignupPage from "@/pages/SignupPage";
+import ActivatePage from "@/pages/ActivatePage";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminPatients from "@/pages/admin/AdminPatients";
 import AdminWards from "@/pages/admin/AdminWards";
@@ -66,6 +69,9 @@ export default function App() {
   return (
     <Routes>
       {/* Public */}
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="/activate" element={<ActivatePage />} />
       <Route path="/login" element={<LoginPage />} />
 
       {/* Admin — sidebar layout */}
@@ -107,26 +113,14 @@ export default function App() {
         </Route>
       </Route>
 
-      {/* Root redirect */}
-      <Route
-        path="/"
-        element={
-          role ? (
-            <Navigate to={ROLE_HOME[role]} replace />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* Catch-all */}
+      {/* Catch-all — authenticated users go home, others go to landing */}
       <Route
         path="*"
         element={
           role ? (
             <Navigate to={ROLE_HOME[role]} replace />
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           )
         }
       />

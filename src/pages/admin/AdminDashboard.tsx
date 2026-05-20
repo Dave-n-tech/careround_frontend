@@ -20,7 +20,7 @@ export default function AdminDashboard() {
   const patientsAdmitted = patientList.filter((p) => p.status === "ADMITTED").length;
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-4 sm:p-8 max-w-6xl">
       {/* Header row */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-[var(--cr-ink)]">Dashboard</h1>

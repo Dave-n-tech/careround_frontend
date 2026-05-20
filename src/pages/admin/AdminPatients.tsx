@@ -145,7 +145,7 @@ function PatientFormModal({ open, onClose, wards, existing, onSave }: PatientFor
       <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-5">
 
         <SectionHeading>Identity</SectionHeading>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="First Name *"
             value={form.firstName}
@@ -159,7 +159,7 @@ function PatientFormModal({ open, onClose, wards, existing, onSave }: PatientFor
             error={errors.lastName}
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Date of Birth *"
             type="date"
@@ -178,7 +178,7 @@ function PatientFormModal({ open, onClose, wards, existing, onSave }: PatientFor
             ]}
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Hospital Number *"
             value={form.hospitalNumber}
@@ -224,7 +224,7 @@ function PatientFormModal({ open, onClose, wards, existing, onSave }: PatientFor
         />
 
         <SectionHeading>Admission</SectionHeading>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Select
             label="Ward *"
             value={form.wardId}
@@ -240,7 +240,7 @@ function PatientFormModal({ open, onClose, wards, existing, onSave }: PatientFor
             placeholder="e.g. 4"
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Select
             label="Admission Type *"
             value={form.admissionType}
@@ -261,7 +261,7 @@ function PatientFormModal({ open, onClose, wards, existing, onSave }: PatientFor
         </div>
 
         <SectionHeading>Emergency Contact</SectionHeading>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Contact Name"
             value={form.emergencyContactName}
@@ -319,7 +319,7 @@ function PatientViewModal({ open, patient: p, wardName, onClose, onEdit }: Patie
       <div className="px-6 py-5 flex flex-col gap-5">
 
         <SectionHeading>Identity</SectionHeading>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
           <Field label="First Name" value={p.firstName} />
           <Field label="Last Name" value={p.lastName} />
           <Field label="Date of Birth" value={`${p.dateOfBirth} (age ${ageFromDob(p.dateOfBirth)})`} />
@@ -337,7 +337,7 @@ function PatientViewModal({ open, patient: p, wardName, onClose, onEdit }: Patie
         </div>
 
         <SectionHeading>Admission</SectionHeading>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
           <Field label="Ward" value={wardName} />
           <Field label="Bed Number" value={p.bedNumber} />
           <Field label="Admission Type" value={admissionTypeLabel[p.admissionType] ?? p.admissionType} />
@@ -356,7 +356,7 @@ function PatientViewModal({ open, patient: p, wardName, onClose, onEdit }: Patie
         </div>
 
         <SectionHeading>Emergency Contact</SectionHeading>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
           <Field label="Contact Name" value={p.emergencyContactName} />
           <Field label="Contact Phone" value={p.emergencyContactPhone} />
         </div>
@@ -457,7 +457,7 @@ export default function AdminPatients() {
   const wardOptions = [{ value: "", label: "All Wards" }, ...wards.map((w) => ({ value: w.id, label: w.name }))];
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-4 sm:p-8 max-w-6xl">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-[var(--cr-ink)]">Patients</h1>
