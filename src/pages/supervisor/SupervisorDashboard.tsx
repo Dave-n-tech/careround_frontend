@@ -1,242 +1,297 @@
-import { useEffect } from "react";
-import { EscalationCard, Icons, NEWSBadge, StatusChip } from "@/components/ui";
-import { Donut } from "@/components/ui/charts";
-import { PageHeader } from "@/layouts/PageHeader";
+import { useNavigate } from "react-router-dom";
+import { LogOut, AlertTriangle, Users, ClipboardCheck, Activity } from "lucide-react";
+import { useAppDispatch } from "@/app/hooks";
+import { clearAuth } from "@/features/auth/authSlice";
+import { useLogoutMutation } from "@/services/api";
+import { useGetPatientsQuery } from "@/services/api/patients";
+import { useGetMedicationTasksQuery } from "@/services/api/prescriptions";
+import { MOCK_PATIENTS, MOCK_TASKS } from "@/lib/mock-data";
+import type { Patient } from "@/types/domain";
+import type { MedicationTaskEnriched } from "@/services/api/prescriptions";
+import { AcuityStrip } from "@/components/ui/badge";
 import {
-  useCurrentWardCareTasks,
-  useCurrentWardEscalations,
-  useCurrentWardPatients,
-  useCurrentWardRounds,
-  useCurrentWardShift,
-  useGetUsersQuery,
-  useGetWardsQuery,
-  useGetWardSupervisorDashboardQuery
-} from "@/services/api";
-import { useCurrentWardId } from "@/features/ward/currentWard";
-import { getUser, patientFullName } from "@/utils/format";
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+} from "recharts";
 
-const POLL_MS = 30_000;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-export default function SupervisorDashboard() {
-  const wardId = useCurrentWardId();
-  const { data: wards = [] } = useGetWardsQuery();
-  const ward = wards.find((w) => w.id === wardId);
-  const totalWardBeds = wards.reduce((sum, item) => sum + (item.totalBeds || 0), 0);
+function isToday(iso: string) {
+  return new Date(iso).toDateString() === new Date().toDateString();
+}
 
-  const { data: patients = [], refetch: refetchPatients } = useCurrentWardPatients();
-  const { data: tasks = [], refetch: refetchTasks } = useCurrentWardCareTasks();
-  const { data: escalations = [], refetch: refetchEsc } = useCurrentWardEscalations();
-  const { data: currentShift, refetch: refetchShift } = useCurrentWardShift();
-  const { data: rounds = [], refetch: refetchRounds } = useCurrentWardRounds();
-  const { data: users = [] } = useGetUsersQuery();
-  const { data: dashboardSummary, isError: isDashboardError, refetch: refetchDashboard } = useGetWardSupervisorDashboardQuery();
+function groupTaskStatus(task: MedicationTaskEnriched): "OVERDUE" | "PENDING" | "COMPLETED" {
+  if (task.status === "COMPLETED") return "COMPLETED";
+  const now = new Date();
+  const t = new Date(task.scheduledTime);
+  if (task.status === "OVERDUE" || t < now) return "OVERDUE";
+  return "PENDING";
+}
 
-  async function refetchAll() {
-    await Promise.allSettled([
-      refetchPatients(),
-      refetchTasks(),
-      refetchEsc(),
-      refetchShift(),
-      refetchRounds(),
-      refetchDashboard()
-    ]);
-  }
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
-  useEffect(() => {
-    const id = setInterval(refetchAll, POLL_MS);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+// ─── Stat card ────────────────────────────────────────────────────────────────
 
-  const nowIso = new Date().toISOString();
-  const completed = tasks.filter((t) => t.status === "COMPLETED").length;
-  const overdue = tasks.filter((t) => t.status !== "COMPLETED" && t.windowEnd < nowIso).length;
-  const completionRate = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
-  const totalBeds = totalWardBeds || ward?.totalBeds || 0;
-
+function StatCard({
+  label, value, icon: Icon, color,
+}: {
+  label: string;
+  value: number;
+  icon: React.ElementType;
+  color: string;
+}) {
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Ward supervisor dashboard</h1>
-          <p className="ink-mute text-sm">{wards.length} wards - auto-refresh {POLL_MS / 1000}s</p>
-        </div>
-        <button className="btn" onClick={refetchAll}><Icons.refresh size={14} />Refresh now</button>
+    <div className="bg-white border border-[var(--cr-line)] rounded-lg p-4 flex items-center gap-4">
+      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${color}`}>
+        <Icon size={20} className="text-white" />
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="panel rounded p-4">
-          <div className="field-label">Total beds</div>
-          <div className="text-3xl font-semibold mt-1">{totalBeds}</div>
-          <div className="text-xs ink-mute mt-1">Across {wards.length} wards</div>
-        </div>
-        <div className="panel rounded p-4">
-          <div className="field-label">Task completion</div>
-          <div className="flex items-center gap-3 mt-1">
-            <Donut pct={completionRate} />
-            <div>
-              <div className="text-2xl font-semibold">{completionRate}%</div>
-              <div className="text-xs ink-mute">{completed}/{tasks.length} today</div>
-            </div>
-          </div>
-        </div>
-        <div className="panel rounded p-4">
-          <div className="field-label">Overdue tasks</div>
-          <div className="text-3xl font-semibold mt-1" style={{ color: overdue > 0 ? "#b91c1c" : "#15803d" }}>{overdue}</div>
-          <div className="text-xs ink-mute mt-1">{overdue > 0 ? "Requires action" : "All on track"}</div>
-        </div>
-        <div className="panel rounded p-4">
-          <div className="field-label">Open escalations</div>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-3xl font-semibold" style={{ color: "#b91c1c" }}>{escalations.filter((e) => e.severity === "RED" && e.status !== "RESOLVED").length}</span>
-            <span className="text-xs">RED</span>
-            <span className="text-3xl font-semibold ml-3" style={{ color: "#b45309" }}>{escalations.filter((e) => e.severity === "AMBER" && e.status !== "RESOLVED").length}</span>
-            <span className="text-xs">AMBER</span>
-          </div>
-          <div className="text-xs ink-mute mt-1">{escalations.filter((e) => e.status === "OPEN").length} unacknowledged</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="panel rounded lg:col-span-2">
-          <div className="px-4 py-3 border-b hairline flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="font-semibold text-sm">Active patients · by acuity</div>
-          </div>
-          <table className="cr">
-            <thead>
-              <tr>
-                <th>Bed</th>
-                <th>Patient</th>
-                <th>NEWS</th>
-                <th>Status</th>
-                <th>Open tasks</th>
-              </tr>
-            </thead>
-            <tbody>
-              {patients.slice(0, 8).map((p) => {
-                const open = tasks.filter((t) => t.patientId === p.id && t.status !== "COMPLETED").length;
-                return (
-                  <tr key={p.id}>
-                    <td className="mono text-xs">{p.bedNumber || "—"}</td>
-                    <td className="font-medium">{patientFullName(p)}</td>
-                    <td><NEWSBadge score={p.newsScore} size="sm" /></td>
-                    <td><StatusChip status={p.status} /></td>
-                    <td><span className="mono">{open}</span></td>
-                  </tr>
-                );
-              })}
-              {patients.length === 0 && (
-                <tr><td colSpan={5} className="text-center ink-mute p-6">No patients loaded for the current ward context.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="space-y-4">
-          <div className="panel rounded p-4">
-            <div className="field-label mb-2">Current shift</div>
-            <div className="font-semibold">{currentShift?.type || "—"} Shift</div>
-            <div className="text-xs ink-mute mb-2">{currentShift?.status || "—"}</div>
-            <div className="space-y-2 mt-3 pt-3 border-t hairline">
-              <div className="flex justify-between text-sm">
-                <span className="ink-mute">Lead doctor</span>
-                <span className="font-medium">
-                  {currentShift?.leadDoctorId
-                    ? (() => { const u = getUser(users, currentShift.leadDoctorId); return u ? `${u.firstName} ${u.lastName}` : "—"; })()
-                    : <span className="ink-mute text-xs">Not assigned</span>
-                  }
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="ink-mute">Nurse in charge</span>
-                <span className="font-medium">
-                  {currentShift?.nurseInChargeId
-                    ? (() => { const u = getUser(users, currentShift.nurseInChargeId); return u ? `${u.firstName} ${u.lastName}` : "—"; })()
-                    : <span className="ink-mute text-xs">Not assigned</span>
-                  }
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="panel rounded p-4">
-            <div className="field-label mb-2">Active rounds</div>
-            {rounds.filter((r) => r.status === "IN_PROGRESS").length === 0 ? (
-              <div className="text-xs ink-mute">No active rounds.</div>
-            ) : (
-              rounds.filter((r) => r.status === "IN_PROGRESS").map((r) => (
-                <div key={r.id} className="text-sm">
-                  <div className="font-medium">{r.roundType} round</div>
-                  <div className="text-xs ink-mute">Led by {getUser(users, r.leadDoctorId)?.firstName || "—"}</div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      {isDashboardError && (
-        <div className="panel rounded border-l-4 border-l-amber-500 p-4 text-sm text-amber-800">
-          Could not load /dashboard/ward-supervisor. All ward data below is still live from backend.
-        </div>
-      )}
-
-      {dashboardSummary && Object.keys(dashboardSummary).length > 0 && (
-        <div className="panel rounded">
-          <div className="px-4 py-3 border-b hairline font-semibold text-sm">Dashboard summary</div>
-          <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-            {Object.entries(dashboardSummary).slice(0, 8).map(([key, value]) => (
-              <div key={key} className="border hairline rounded p-3">
-                <div className="field-label">{key.replace(/([A-Z])/g, " $1").toLowerCase()}</div>
-                <div className="font-semibold mt-1">{String(value)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="panel rounded">
-        <div className="px-4 py-3 border-b hairline font-semibold text-sm">Open escalations</div>
-        <div className="p-3 space-y-2">
-          {escalations.filter((e) => e.status !== "RESOLVED").length === 0 ? (
-            <div className="text-center ink-mute p-4 text-sm">No open escalations.</div>
-          ) : (
-            escalations.filter((e) => e.status !== "RESOLVED").map((e) => (
-              <EscalationCard
-                key={e.id}
-                esc={e}
-                patient={patients.find((p) => p.id === e.patientId)}
-                wardName={ward?.name || "Ward"}
-                assigneeName={e.assignedToId ? getUser(users, e.assignedToId)?.firstName : undefined}
-              />
-            ))
-          )}
-        </div>
-      </div>
-
-      <div className="panel rounded">
-        <div className="px-4 py-3 border-b hairline font-semibold text-sm">Ward coverage</div>
-        <table className="cr">
-          <thead>
-            <tr><th>Ward</th><th>Specialty</th><th>Beds</th><th>Supervisor</th></tr>
-          </thead>
-          <tbody>
-            {wards.map((item) => {
-              const supervisor = item.supervisorId ? getUser(users, item.supervisorId) : undefined;
-              return (
-                <tr key={item.id}>
-                  <td className="font-medium">{item.name}</td>
-                  <td className="ink-2">{item.specialty || "-"}</td>
-                  <td className="mono text-xs">{item.totalBeds}</td>
-                  <td className="ink-2">{supervisor ? `${supervisor.firstName} ${supervisor.lastName}` : "-"}</td>
-                </tr>
-              );
-            })}
-            {wards.length === 0 && <tr><td colSpan={4} className="p-6 text-center ink-mute">No wards found.</td></tr>}
-          </tbody>
-        </table>
+      <div>
+        <p className="text-2xl font-bold text-[var(--cr-ink)] leading-none">{value}</p>
+        <p className="text-xs text-[var(--cr-muted)] mt-0.5">{label}</p>
       </div>
     </div>
   );
 }
 
+// ─── Patient grid card ────────────────────────────────────────────────────────
 
+function PatientGridCard({ patient }: { patient: Patient }) {
+  const acuityBg = {
+    RED: "bg-red-50 border-red-200",
+    AMBER: "bg-amber-50 border-amber-200",
+    GREEN: "bg-white border-[var(--cr-line)]",
+  }[patient.acuityColor];
 
+  return (
+    <div className={`relative flex overflow-hidden rounded-lg border ${acuityBg}`}>
+      <AcuityStrip color={patient.acuityColor} />
+      <div className="flex-1 px-3 py-2 min-w-0">
+        <p className="text-sm font-semibold text-[var(--cr-ink)] truncate">
+          {patient.firstName} {patient.lastName}
+        </p>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          {patient.bedNumber && (
+            <span className="text-xs text-[var(--cr-muted)]">Bed {patient.bedNumber}</span>
+          )}
+          {patient.primaryDiagnosis && (
+            <span className="text-xs text-[var(--cr-ink-2)] truncate max-w-[160px]">
+              {patient.primaryDiagnosis}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Overdue alert panel ──────────────────────────────────────────────────────
+
+function OverdueAlertPanel({ tasks }: { tasks: MedicationTaskEnriched[] }) {
+  const overdue = tasks.filter((t) => groupTaskStatus(t) === "OVERDUE");
+
+  if (overdue.length === 0) {
+    return (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-700 flex items-center gap-2">
+        <ClipboardCheck size={16} />
+        No overdue medication tasks.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-red-200 flex items-center gap-2">
+        <AlertTriangle size={16} className="text-red-600" />
+        <span className="text-sm font-semibold text-red-700">
+          {overdue.length} Overdue Task{overdue.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+      <div className="divide-y divide-red-100 max-h-48 overflow-y-auto">
+        {overdue.map((t) => (
+          <div key={t.id} className="flex items-center justify-between px-4 py-2.5 gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[var(--cr-ink)] truncate">
+                {t.patientName}
+                {t.bedNumber && (
+                  <span className="ml-2 text-xs text-[var(--cr-muted)] font-normal">Bed {t.bedNumber}</span>
+                )}
+              </p>
+              <p className="text-xs text-[var(--cr-ink-2)]">
+                {t.drugName} {t.dose} {t.route}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <span className="text-xs text-red-600 font-medium">Due {fmtTime(t.scheduledTime)}</span>
+              {t.minutesOverdue !== undefined && (
+                <p className="text-xs text-red-500">{t.minutesOverdue}m late</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Hourly completion chart ──────────────────────────────────────────────────
+
+function buildHourlyData(tasks: MedicationTaskEnriched[]) {
+  const counts: Record<number, number> = {};
+  for (const t of tasks) {
+    if (t.status === "COMPLETED" && t.completedAt && isToday(t.completedAt)) {
+      const h = new Date(t.completedAt).getHours();
+      counts[h] = (counts[h] ?? 0) + 1;
+    }
+  }
+  return Array.from({ length: 24 }, (_, h) => ({
+    hour: `${String(h).padStart(2, "0")}:00`,
+    count: counts[h] ?? 0,
+  }));
+}
+
+function HourlyChart({ tasks }: { tasks: MedicationTaskEnriched[] }) {
+  const data = buildHourlyData(tasks);
+  const currentHour = new Date().getHours();
+
+  return (
+    <div className="bg-white border border-[var(--cr-line)] rounded-lg p-4">
+      <h3 className="text-sm font-semibold text-[var(--cr-ink)] mb-3">
+        Medications Administered Today (by hour)
+      </h3>
+      <ResponsiveContainer width="100%" height={160}>
+        <BarChart data={data} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
+          <XAxis
+            dataKey="hour"
+            tick={{ fontSize: 10, fill: "var(--cr-muted)" }}
+            tickFormatter={(v: string) => v.split(":")[0]}
+            interval={2}
+          />
+          <YAxis tick={{ fontSize: 10, fill: "var(--cr-muted)" }} allowDecimals={false} />
+          <Tooltip
+            formatter={(v) => [v, "Administered"]}
+            labelFormatter={(l) => String(l)}
+            contentStyle={{ fontSize: 12, borderRadius: 6, border: "1px solid var(--cr-line)" }}
+          />
+          <Bar dataKey="count" radius={[3, 3, 0, 0]}>
+            {data.map((entry, idx) => (
+              <Cell
+                key={idx}
+                fill={
+                  idx < currentHour
+                    ? "var(--cr-accent)"
+                    : idx === currentHour
+                    ? "#0d9488"
+                    : "#d1faf6"
+                }
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ─── Main dashboard ───────────────────────────────────────────────────────────
+
+export default function SupervisorDashboard() {
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const [logout] = useLogoutMutation();
+
+  const { data: patientsData } = useGetPatientsQuery({}, { pollingInterval: 10_000 });
+  const { data: tasksData } = useGetMedicationTasksQuery({}, { pollingInterval: 10_000 });
+
+  const patients = (patientsData ?? MOCK_PATIENTS).filter((p) => p.status === "ADMITTED");
+  const tasks = tasksData ?? MOCK_TASKS;
+
+  // ── Derived stats ────────────────────────────────────────────────────────────
+  const overdueCount = tasks.filter((t) => groupTaskStatus(t) === "OVERDUE").length;
+  const atRiskCount = patients.filter((p) => p.acuityColor !== "GREEN").length;
+  const completedTodayCount = tasks.filter(
+    (t) => t.status === "COMPLETED" && t.completedAt && isToday(t.completedAt)
+  ).length;
+
+  async function handleLogout() {
+    try { await logout().unwrap(); } catch { /* ignore */ }
+    dispatch(clearAuth());
+    navigate("/login", { replace: true });
+  }
+
+  return (
+    <div className="min-h-screen bg-[var(--cr-bg)]">
+      {/* Header */}
+      <header className="h-14 bg-white border-b border-[var(--cr-line)] flex items-center justify-between px-6 sticky top-0 z-10">
+        <span className="font-display font-bold text-[var(--cr-ink)] text-sm">
+          CareRound — Supervisor
+        </span>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-1.5 text-sm text-[var(--cr-muted)] hover:text-[var(--cr-danger)] transition-colors"
+        >
+          <LogOut size={14} />
+          Sign out
+        </button>
+      </header>
+
+      <div className="p-6 max-w-5xl mx-auto space-y-6">
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="Admitted Patients"
+            value={patients.length}
+            icon={Users}
+            color="bg-[var(--cr-accent)]"
+          />
+          <StatCard
+            label="Overdue Medications"
+            value={overdueCount}
+            icon={AlertTriangle}
+            color={overdueCount > 0 ? "bg-red-500" : "bg-slate-400"}
+          />
+          <StatCard
+            label="At-risk Patients"
+            value={atRiskCount}
+            icon={Activity}
+            color={atRiskCount > 0 ? "bg-amber-500" : "bg-slate-400"}
+          />
+          <StatCard
+            label="Completed Today"
+            value={completedTodayCount}
+            icon={ClipboardCheck}
+            color="bg-green-500"
+          />
+        </div>
+
+        {/* Overdue alerts */}
+        <OverdueAlertPanel tasks={tasks} />
+
+        {/* Hourly chart */}
+        <HourlyChart tasks={tasks} />
+
+        {/* Patient grid */}
+        <div>
+          <h2 className="text-sm font-semibold text-[var(--cr-ink)] mb-3 flex items-center gap-2">
+            <Users size={16} />
+            Admitted Patients ({patients.length})
+          </h2>
+          {patients.length === 0 ? (
+            <p className="text-sm text-[var(--cr-muted)] py-4">No admitted patients.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {[...patients]
+                .sort((a, b) => {
+                  const o = { RED: 0, AMBER: 1, GREEN: 2 };
+                  return o[a.acuityColor] - o[b.acuityColor];
+                })
+                .map((p) => (
+                  <PatientGridCard key={p.id} patient={p} />
+                ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

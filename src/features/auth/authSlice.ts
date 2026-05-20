@@ -49,6 +49,11 @@ const authSlice = createSlice({
       localStorage.removeItem("cr_role");
       localStorage.removeItem("cr_user");
     },
+    patchUser(state, action: PayloadAction<Partial<Pick<User, "firstName" | "lastName" | "email">>>) {
+      if (!state.user) return;
+      state.user = { ...state.user, ...action.payload };
+      localStorage.setItem("cr_user", JSON.stringify(state.user));
+    },
     // Used by the dev mock login to set auth state directly
     setMockAuth(state, action: PayloadAction<{ user: User; role: Role; token: string }>) {
       state.user = action.payload.user;
@@ -110,5 +115,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearAuth, setMockAuth } = authSlice.actions;
+export const { clearAuth, setMockAuth, patchUser } = authSlice.actions;
 export default authSlice.reducer;
