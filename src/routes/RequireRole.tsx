@@ -1,11 +1,17 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAppSelector } from "@/app/hooks";
 import type { Role } from "@/types/domain";
-import { roleHomePath } from "@/navigation/nav";
 
-type RequireRoleProps = {
-  allow: Role[];
+const ROLE_HOME: Record<Role, string> = {
+  ADMIN: "/admin/dashboard",
+  DOCTOR: "/doctor/patients",
+  NURSE: "/nurse/tasks",
+  SUPERVISOR: "/supervisor/dashboard",
 };
+
+interface RequireRoleProps {
+  allow: Role[];
+}
 
 export default function RequireRole({ allow }: RequireRoleProps) {
   const role = useAppSelector((state) => state.auth.role);
@@ -15,7 +21,7 @@ export default function RequireRole({ allow }: RequireRoleProps) {
   }
 
   if (!allow.includes(role)) {
-    return <Navigate to={roleHomePath(role)} replace />;
+    return <Navigate to={ROLE_HOME[role]} replace />;
   }
 
   return <Outlet />;

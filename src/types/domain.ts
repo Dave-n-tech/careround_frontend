@@ -1,138 +1,61 @@
-// ─── Enums ───────────────────────────────────────────────────────────────────
+// ─── Roles ───────────────────────────────────────────────────────────────────
 
-export type Role =
-  | "ADMIN"
-  | "CONSULTANT"
-  | "REGISTRAR"
-  | "JUNIOR_DOCTOR"
-  | "NURSE"
-  | "WARD_SUPERVISOR";
+export type Role = "ADMIN" | "DOCTOR" | "NURSE" | "SUPERVISOR";
 
-export type ShiftType = "DAY" | "NIGHT";
+// ─── Clinical enums ───────────────────────────────────────────────────────────
 
-export type ShiftStatus =
-  | "PENDING_ASSIGNMENT"
-  | "ACTIVE"
-  | "COMPLETED"
-  | "HANDED_OVER";
-
-export type HandoverStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED";
-
-export type OnCallRole = "REGISTRAR_ON_CALL" | "CONSULTANT_ON_CALL";
-
-export type InviteStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED";
-
-export type RoundType =
-  | "MORNING"
-  | "POST_TAKE"
-  | "BOARD"
-  | "EVENING"
-  | "WEEKEND";
-
-export type RoundStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
-
-export type PatientStatus =
-  | "ADMITTED"
-  | "STABLE"
-  | "DETERIORATING"
-  | "DISCHARGE_READY"
-  | "DISCHARGED";
-
-export type AcuityLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type AcuityColor = "GREEN" | "AMBER" | "RED";
+export type VhiStatus = "STABLE" | "WATCH" | "CRITICAL";
 
 export type AdmissionType = "EMERGENCY" | "ELECTIVE" | "TRANSFER";
-
-export type ClinicalStatus =
-  | "STABLE"
-  | "IMPROVING"
-  | "DETERIORATING"
-  | "CRITICAL";
-
-export type DischargeAssessment =
-  | "NONE"
-  | "POSSIBLE"
-  | "CONFIRMED"
-  | "BLOCKED_SOCIAL"
-  | "BLOCKED_MEDICAL";
+export type PatientStatus = "ADMITTED" | "DISCHARGED";
+export type PatientGender = "MALE" | "FEMALE" | "OTHER";
 
 export type NoteType =
-  | "ROUND_NOTE"
+  | "WARD_ROUND_NOTE"
   | "PROGRESS_NOTE"
   | "ADMISSION_NOTE"
   | "DISCHARGE_NOTE"
-  | "ESCALATION_NOTE";
+  | "HANDOVER_NOTE"
+  | "NURSING_REPORT";
 
-export type TaskPriority = "ROUTINE" | "URGENT" | "EMERGENCY";
+export type PrescriptionStatus = "ACTIVE" | "DISCONTINUED" | "COMPLETED";
+export type TaskStatus = "PENDING" | "COMPLETED" | "OVERDUE";
+export type ChartStatus = "ACTIVE" | "COMPLETED" | "DISCONTINUED";
 
-export type TaskStatus =
-  | "PENDING"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "OVERDUE"
-  | "CANCELLED";
-
-export type TaskSource = "NURSING_CARE_PLAN" | "POST_ROUND_JOB";
-
-export type AssignedToRole = "NURSE" | "JUNIOR_DOCTOR" | "REGISTRAR";
-
-export type EscalationSeverity = "AMBER" | "RED";
-
-export type EscalationStatus = "OPEN" | "ACKNOWLEDGED" | "RESOLVED";
-
-export type EscalationTrigger =
-  | "HIGH_NEWS_SCORE"
-  | "TASK_OVERDUE"
-  | "NURSE_CONCERN"
-  | "DETERIORATION";
-
-export type ContactMethod = "SMS" | "EMAIL" | "BOTH";
-
-export type ConsciousnessLevel = "ALERT" | "VOICE" | "PAIN" | "UNRESPONSIVE";
-
-export type OnboardingStatus =
-  | "PENDING_REVIEW"
-  | "CONTACTED"
-  | "APPROVED"
-  | "REJECTED"
-  | "PROVISIONED";
-
-// ─── Response interfaces (match API spec exactly) ────────────────────────────
+// ─── Core entities ────────────────────────────────────────────────────────────
 
 export interface Hospital {
   id: string;
   name: string;
-  address: string | null;
+  code: string;
+  address?: string;
   contactEmail: string;
-  contactPhone: string | null;
+  contactPhone?: string;
+  isActive: boolean;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface SystemConfig {
   id: string;
   hospitalId: string;
-  newsAmberThreshold: number;
-  newsRedThreshold: number;
-  taskOverdueGraceMinutes: number;
-  roundNotificationsEnabled: boolean;
-  nokNotificationEnabled: boolean;
-}
-
-export interface Department {
-  id: string;
-  hospitalId: string;
-  name: string;
-  headOfDepartmentId: string | null;
+  taskOverdueReminderMinutes: number;
+  taskEscalationMinutes: number;
+  pushNotificationsEnabled: boolean;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface Ward {
   id: string;
   hospitalId: string;
   name: string;
-  specialty: string | null;
+  specialty?: string;
   totalBeds: number;
-  supervisorId: string | null;
+  isActive: boolean;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface User {
@@ -142,120 +65,54 @@ export interface User {
   lastName: string;
   email: string;
   role: Role;
-  departmentId: string | null;
+  isActive: boolean;
+  fcmToken?: string;
   createdAt: string;
-  active: boolean;
-}
-
-export interface MedicalTeam {
-  id: string;
-  hospitalId: string;
-  name: string;
-  consultantId: string | null;
-  departmentId: string;
-  createdAt: string;
-  wardIds?: string[];
-}
-
-export interface TeamInvite {
-  id: string;
-  hospitalId: string;
-  medicalTeamId: string;
-  invitedUserId: string;
-  invitedById: string;
-  status: InviteStatus;
-  expiresAt: string;
-  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Patient {
   id: string;
+  hospitalId: string;
   wardId: string;
-  medicalTeamId: string;
-  admittingConsultantId: string | null;
+  bedNumber?: string;
   firstName: string;
   lastName: string;
-  hospitalNumber: string;
   dateOfBirth: string;
-  gender: string | null;
-  bedNumber: string | null;
-  admissionType: AdmissionType;
-  primaryDiagnosis: string | null;
-  specialtyRequired: string | null;
-  acuityLevel: AcuityLevel;
-  newsScore: number;
-  isDischargeReady: boolean;
-  estimatedDischargeDate: string | null;
-  status: PatientStatus;
+  gender: PatientGender;
+  hospitalNumber: string;
+  phoneNumber?: string;
+  address?: string;
+  previousConditions?: string;
+  currentMedications?: string;
+  allergies?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
   admissionDate: string;
+  admissionType: AdmissionType;
+  primaryDiagnosis?: string;
+  acuityColor: AcuityColor;
+  status: PatientStatus;
+  estimatedDischargeDate?: string;
+  registeredById: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface Vitals {
+export interface PatientVitals {
   id: string;
   patientId: string;
+  hospitalId: string;
   recordedById: string;
-  heartRate: number;
-  respiratoryRate: number;
-  systolicBP: number;
-  oxygenSaturation: number;
-  temperature: number;
-  consciousnessLevel: ConsciousnessLevel;
-  newsScore: number;
+  pulse?: number;
+  systolicBp?: number;
+  diastolicBp?: number;
+  respiratoryRate?: number;
+  temperature?: number;
+  spo2?: number;
+  vhiScore: number;
+  vhiStatus: VhiStatus;
   recordedAt: string;
-}
-
-export interface NextOfKin {
-  id: string;
-  patientId: string;
-  name: string;
-  relationship: string | null;
-  phone: string | null;
-  email: string | null;
-  preferredContactMethod: ContactMethod;
-  isEmergencyContact: boolean;
-  notificationConsent: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CareTask {
-  id: string;
-  hospitalId: string;
-  patientId: string;
-  wardId: string;
-  roundId: string | null;
-  createdById: string;
-  assignedToId: string | null;
-  assignedToRole: AssignedToRole | null;
-  taskType: string;
-  source: TaskSource;
-  title: string;
-  description: string | null;
-  priority: TaskPriority;
-  windowStart: string;
-  windowEnd: string;
-  status: TaskStatus;
-  completedById: string | null;
-  completedAt: string | null;
-  workloadConflict: boolean;
-  workloadConflictReason: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Escalation {
-  id: string;
-  patientId: string;
-  hospitalId: string;
-  triggeredById: string | null;
-  assignedToId: string | null;
-  triggerType: EscalationTrigger;
-  severity: EscalationSeverity;
-  status: EscalationStatus;
-  notes: string | null;
-  resolvedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -263,128 +120,102 @@ export interface Escalation {
 export interface ClinicalNote {
   id: string;
   patientId: string;
-  patientRoundReviewId: string | null;
+  hospitalId: string;
   authorId: string;
   noteType: NoteType;
   content: string;
-  isAmended: boolean;
-  amendedById: string | null;
-  amendedAt: string | null;
+  rawTranscription?: string;
+  isAiGenerated: boolean;
+  confirmedByDoctorAt?: string;
+  aiModelUsed?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface Shift {
-  id: string;
-  wardId: string;
-  shiftScheduleId: string | null;
-  type: ShiftType;
-  startTime: string;
-  endTime: string;
-  leadDoctorId: string | null;
-  nurseInChargeId: string | null;
-  status: ShiftStatus;
-  assignedAt: string | null;
-  createdAt: string;
+export interface SoapContent {
+  subjective: string;
+  objective: string;
+  assessment: string;
+  plan: string;
 }
 
-export interface ShiftSchedule {
+export interface Prescription {
   id: string;
-  hospitalId: string;
-  wardId: string | null;
-  shiftType: ShiftType;
-  startTime: string;
-  endTime: string;
-  daysOfWeek: string;
-  active: boolean;
-  createdAt: string;
-}
-
-export interface OnCallRotation {
-  id: string;
-  hospitalId: string;
-  departmentId: string;
-  wardId: string | null;
-  doctorId: string;
-  role: OnCallRole;
-  startTime: string;
-  endTime: string;
-  createdAt: string;
-}
-
-export interface Round {
-  id: string;
-  hospitalId: string;
-  wardId: string;
-  medicalTeamId: string;
-  shiftId: string | null;
-  roundType: RoundType;
-  leadDoctorId: string;
-  status: RoundStatus;
-  scheduledTime: string | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  teamMembers: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface PatientRoundReview {
-  id: string;
-  roundId: string;
   patientId: string;
-  reviewedById: string;
-  reviewOrder: number;
-  newsScoreAtReview: number | null;
-  clinicalStatus: ClinicalStatus;
-  wasExamined: boolean;
-  managementPlan: string | null;
-  dischargeAssessment: DischargeAssessment;
-  notifiedNextOfKin: boolean;
-  reviewedAt: string;
-  createdAt: string;
-}
-
-export interface Handover {
-  id: string;
-  wardId: string;
-  outgoingShiftId: string;
-  incomingShiftId: string;
-  conductedById: string;
-  status: HandoverStatus;
-  generalNotes: string | null;
-  completedAt: string | null;
+  hospitalId: string;
+  clinicalNoteId?: string;
+  drugName: string;
+  dose: string;
+  route: string;
+  frequencyString: string;
+  frequencyHours: number;
+  totalDoses: number;
+  startTime: string;
+  administrationTimes: string[];
+  confirmedById: string;
+  confirmedAt: string;
+  status: PrescriptionStatus;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface PatientHandoverNote {
+export interface MedicationChart {
   id: string;
-  handoverId: string;
   patientId: string;
-  statusSummary: string | null;
-  outstandingTaskIds: string | null;
-  urgencyFlag: boolean;
-  addedById: string;
+  hospitalId: string;
+  prescriptionId: string;
+  status: ChartStatus;
+  nurseNotes?: string;
   createdAt: string;
+  updatedAt: string;
 }
 
-export interface HospitalOnboarding {
+export interface MedicationTask {
   id: string;
-  hospitalName: string;
-  countryOrRegion: string | null;
-  contactEmail: string;
-  contactPhone: string | null;
-  hospitalType: string | null;
-  estimatedInpatientBeds: string | null;
-  primaryNeed: string | null;
-  status: OnboardingStatus;
-  reviewNotes: string | null;
-  reviewedByUserId: string | null;
-  reviewedAt: string | null;
-  provisionedHospitalId: string | null;
+  medicationChartId: string;
+  patientId: string;
+  hospitalId: string;
+  wardId: string;
+  assignedNurseId?: string;
+  scheduledTime: string;
+  status: TaskStatus;
+  completedAt?: string;
+  completedById?: string;
+  completedByName?: string;
+  actualDoseGiven?: string;
   createdAt: string;
+  updatedAt: string;
 }
+
+export interface HandoverNote {
+  id: string;
+  patientId: string;
+  hospitalId: string;
+  authorId: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── AI types ─────────────────────────────────────────────────────────────────
+
+export interface AiPrescription {
+  drugName: string;
+  dose: string;
+  route: string;
+  frequencyString: string;
+  frequencyHours: number;
+  totalDoses: number;
+  administrationTimes: string[];
+}
+
+export interface AiProcessingResult {
+  rawTranscription: string;
+  clinicalNote: SoapContent;
+  prescriptions: AiPrescription[];
+}
+
+// ─── Auth / API shapes ────────────────────────────────────────────────────────
 
 export interface JwtResponse {
   accessToken: string;
@@ -393,25 +224,57 @@ export interface JwtResponse {
   expiresIn: number;
   userId: string;
   hospitalId: string;
-  role: string;
+  role: Role;
 }
 
-export interface PlatformLoginResponse {
-  accessToken: string;
-  tokenType: string;
-  expiresIn: number;
-  operatorId: string;
-  role: string;
+export interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
 }
 
-export interface ProvisionHospitalTenantResponse {
-  requestId: string;
-  hospitalId: string;
-  adminUserId: string;
-  status: OnboardingStatus;
+// ─── Supervisor dashboard ─────────────────────────────────────────────────────
+
+export interface SupervisorDashboard {
+  wardId: string;
+  wardName: string;
+  totalPatients: number;
+  tasksCompleted: number;
+  tasksTotal: number;
+  tasksOverdue: number;
+  completionRate: number;
+  patients: SupervisorPatientSummary[];
+  overdueTasks: SupervisorOverdueTask[];
+  hourlyCompletion: HourlyCompletionPoint[];
 }
 
-// ─── Convenience type aliases used by the old codebase (backward compat) ─────
-// These are kept so pages that reference "Team" still compile.
+export interface SupervisorPatientSummary {
+  patientId: string;
+  fullName: string;
+  bedNumber?: string;
+  acuityColor: AcuityColor;
+  vhiScore: number;
+  vhiStatus: VhiStatus;
+  activemedications: string[];
+  tasksCompleted: number;
+  tasksTotal: number;
+  tasksOverdue: number;
+  lastVitalsAt?: string;
+}
 
-export type Team = MedicalTeam;
+export interface SupervisorOverdueTask {
+  taskId: string;
+  patientName: string;
+  bedNumber?: string;
+  drugName: string;
+  dose: string;
+  minutesOverdue: number;
+  assignedNurseName?: string;
+}
+
+export interface HourlyCompletionPoint {
+  hour: string;
+  completed: number;
+  total: number;
+  rate: number;
+}

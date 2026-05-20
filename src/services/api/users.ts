@@ -1,39 +1,51 @@
 import { api } from "./baseApi";
-import type { User } from "@/types/domain";
+import type { Role, User } from "@/types/domain";
 
-export type CreateUserRequest = {
+interface CreateUserRequest {
   firstName: string;
   lastName: string;
   email: string;
+  role: Role;
   password: string;
-  role: string;
-  departmentId?: string;
-};
+}
 
-const usersApi = api.injectEndpoints({
-  endpoints: (builder) => ({
-    getUsers: builder.query<User[], void>({
+interface UpdateUserRequest {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  role?: Role;
+}
+
+export const usersApi = api.injectEndpoints({
+  endpoints: (build) => ({
+    getUsers: build.query<User[], void>({
       query: () => "/users",
-      providesTags: ["Users"]
+      providesTags: ["Users"],
     }),
-    getUserById: builder.query<User, string>({
-      query: (id) => `/users/${id}`,
-      providesTags: (_r, _e, id) => [{ type: "Users", id }]
-    }),
-    createUser: builder.mutation<User, CreateUserRequest>({
+    createUser: build.mutation<User, CreateUserRequest>({
       query: (body) => ({ url: "/users", method: "POST", body }),
-      invalidatesTags: ["Users"]
+      invalidatesTags: ["Users"],
     }),
-    deactivateUser: builder.mutation<void, string>({
+    updateUser: build.mutation<User, { id: string } & UpdateUserRequest>({
+      query: ({ id, ...body }) => ({ url: `/users/${id}`, method: "PUT", body }),
+      invalidatesTags: ["Users"],
+    }),
+    deactivateUser: build.mutation<void, string>({
       query: (id) => ({ url: `/users/${id}/deactivate`, method: "PUT" }),
-      invalidatesTags: ["Users"]
-    })
-  })
+      invalidatesTags: ["Users"],
+    }),
+    reactivateUser: build.mutation<void, string>({
+      query: (id) => ({ url: `/users/${id}/reactivate`, method: "PUT" }),
+      invalidatesTags: ["Users"],
+    }),
+  }),
+  overrideExisting: false,
 });
 
 export const {
   useGetUsersQuery,
-  useGetUserByIdQuery,
   useCreateUserMutation,
-  useDeactivateUserMutation
+  useUpdateUserMutation,
+  useDeactivateUserMutation,
+  useReactivateUserMutation,
 } = usersApi;

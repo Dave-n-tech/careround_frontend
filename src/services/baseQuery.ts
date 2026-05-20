@@ -2,7 +2,7 @@ import {
   fetchBaseQuery,
   type BaseQueryFn,
   type FetchArgs,
-  type FetchBaseQueryError
+  type FetchBaseQueryError,
 } from "@reduxjs/toolkit/query/react";
 
 const apiBaseUrl =
@@ -20,23 +20,12 @@ const isEnvelope = (value: unknown): value is BackendEnvelope<unknown> =>
 
 const realBaseQuery = fetchBaseQuery({
   baseUrl: apiBaseUrl,
-  credentials: "include",
-  prepareHeaders: (headers, api) => {
-    const platformEndpoints = new Set([
-      "platformLogin",
-      "listHospitalOnboardingRequests",
-      "getHospitalOnboardingRequest",
-      "reviewHospitalOnboardingRequest",
-      "provisionHospitalTenant",
-      "getHospitals"
-    ]);
-    const token = platformEndpoints.has(api.endpoint)
-      ? localStorage.getItem("cr_platform_access_token")
-      : localStorage.getItem("cr_access_token");
+  prepareHeaders: (headers) => {
+    const token = localStorage.getItem("cr_access_token");
     if (token) headers.set("authorization", `Bearer ${token}`);
     headers.set("accept", "application/json");
     return headers;
-  }
+  },
 });
 
 const baseQueryWithEnvelope: BaseQueryFn<
@@ -51,15 +40,15 @@ const baseQueryWithEnvelope: BaseQueryFn<
   return result;
 };
 
-const baseQueryWithAuthExpiry: BaseQueryFn<
+export const baseQuery: BaseQueryFn<
   string | FetchArgs,
   unknown,
   FetchBaseQueryError
 > = async (args, api, extraOptions) => {
   const result = await baseQueryWithEnvelope(args, api, extraOptions);
 
-  const isAuthEndpoint =
-    typeof args === "object" && typeof args.url === "string" && args.url.startsWith("/auth/");
+  const url = typeof args === "object" ? (args as FetchArgs).url : args;
+  const isAuthEndpoint = typeof url === "string" && url.startsWith("/auth/");
 
   if (result.error?.status === 401 && !isAuthEndpoint) {
     window.dispatchEvent(new Event("cr:auth-expired"));
@@ -67,5 +56,3 @@ const baseQueryWithAuthExpiry: BaseQueryFn<
 
   return result;
 };
-
-export const baseQuery = baseQueryWithAuthExpiry;
