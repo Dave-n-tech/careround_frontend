@@ -1,35 +1,52 @@
 import { useEffect } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { ToastProvider } from "@/components/ui";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { clearAuth } from "@/features/auth/authSlice";
 import { useLazyGetMeQuery } from "@/services/api";
-import { roleHomePath } from "@/navigation/nav";
 import RequireAuth from "@/routes/RequireAuth";
 import RequireRole from "@/routes/RequireRole";
-import AppShell from "@/layouts/AppShell";
-import LandingPage from "@/pages/LandingPage";
+import AdminLayout from "@/layouts/AdminLayout";
+import TopNavLayout from "@/layouts/TopNavLayout";
 import LoginPage from "@/pages/LoginPage";
-import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
-import SignupPage from "@/pages/SignupPage";
-import NotificationsPage from "@/pages/NotificationsPage";
-import ProfilePage from "@/pages/ProfilePage";
-import PlatformLoginPage from "@/pages/platform/PlatformLoginPage";
-import PlatformAdminPage from "@/pages/platform/PlatformAdminPage";
-import AdminRoutes from "@/pages/admin/AdminRoutes";
-import ConsultantRoutes from "@/pages/clinical/ConsultantRoutes";
-import RegistrarRoutes from "@/pages/clinical/RegistrarRoutes";
-import JuniorDoctorRoutes from "@/pages/clinical/JuniorDoctorRoutes";
-import NurseRoutes from "@/pages/nurse/NurseRoutes";
-import SupervisorRoutes from "@/pages/supervisor/SupervisorRoutes";
-import SearchResultsPage from "@/pages/SearchResultsPage";
+import AdminDashboard from "@/pages/admin/AdminDashboard";
+import AdminPatients from "@/pages/admin/AdminPatients";
+import AdminWards from "@/pages/admin/AdminWards";
+import AdminUsers from "@/pages/admin/AdminUsers";
+import AdminSettings from "@/pages/admin/AdminSettings";
+import PatientListPage from "@/pages/shared/PatientListPage";
+import ProfilePage from "@/pages/shared/ProfilePage";
+import PatientDetail from "@/pages/shared/PatientDetail";
+import DoctorPatients from "@/pages/doctor/DoctorPatients";
+import RecordingFlow from "@/pages/doctor/RecordingFlow";
+import NurseTasks from "@/pages/nurse/NurseTasks";
+import SupervisorDashboard from "@/pages/supervisor/SupervisorDashboard";
+import type { Role } from "@/types/domain";
+
+const ROLE_HOME: Record<Role, string> = {
+  ADMIN: "/admin/dashboard",
+  DOCTOR: "/doctor/patients",
+  NURSE: "/nurse/tasks",
+  SUPERVISOR: "/supervisor/dashboard",
+};
+
+const DOCTOR_LINKS = [
+  { to: "/doctor/patients", label: "Patients" },
+  { to: "/doctor/profile", label: "Profile" },
+];
+
+const NURSE_LINKS = [
+  { to: "/nurse/tasks", label: "Tasks" },
+  { to: "/nurse/patients", label: "Patients" },
+  { to: "/nurse/profile", label: "Profile" },
+];
 
 export default function App() {
-  const { accessToken, role, status, user } = useAppSelector((state) => state.auth);
+  const { accessToken, role, status, user } = useAppSelector((s) => s.auth);
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const [fetchMe] = useLazyGetMeQuery();
 
+  // Handle token expiry events fired by baseQuery
   useEffect(() => {
     function onExpired() {
       dispatch(clearAuth());
@@ -39,6 +56,7 @@ export default function App() {
     return () => window.removeEventListener("cr:auth-expired", onExpired);
   }, [dispatch, navigate]);
 
+  // After login, fetch the user profile (skipped in dev mock mode — user already set)
   useEffect(() => {
     if (accessToken && status === "loading" && !user) {
       fetchMe();
@@ -46,44 +64,72 @@ export default function App() {
   }, [accessToken, fetchMe, status, user]);
 
   return (
-    <ToastProvider>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/platform/login" element={<PlatformLoginPage />} />
-        <Route path="/platform" element={<PlatformAdminPage />} />
+    <Routes>
+      {/* Public */}
+      <Route path="/login" element={<LoginPage />} />
 
-        <Route element={<RequireAuth />}>
-          <Route element={<AppShell />}>
-            <Route path="/search" element={<SearchResultsPage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/change-password" element={<ProfilePage />} />
-            <Route element={<RequireRole allow={["ADMIN"]} />}>
-              <Route path="/admin/*" element={<AdminRoutes />} />
-            </Route>
-            <Route element={<RequireRole allow={["CONSULTANT"]} />}>
-              <Route path="/consultant/*" element={<ConsultantRoutes />} />
-            </Route>
-            <Route element={<RequireRole allow={["REGISTRAR"]} />}>
-              <Route path="/registrar/*" element={<RegistrarRoutes />} />
-            </Route>
-            <Route element={<RequireRole allow={["JUNIOR_DOCTOR"]} />}>
-              <Route path="/junior/*" element={<JuniorDoctorRoutes />} />
-            </Route>
-            <Route element={<RequireRole allow={["NURSE"]} />}>
-              <Route path="/nurse/*" element={<NurseRoutes />} />
-            </Route>
-            <Route element={<RequireRole allow={["WARD_SUPERVISOR"]} />}>
-              <Route path="/supervisor/*" element={<SupervisorRoutes />} />
-            </Route>
+      {/* Admin — sidebar layout */}
+      <Route element={<RequireAuth />}>
+        <Route element={<RequireRole allow={["ADMIN"]} />}>
+          <Route element={<AdminLayout />}>
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/patients" element={<AdminPatients />} />
+            <Route path="/admin/wards" element={<AdminWards />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/settings" element={<AdminSettings />} />
           </Route>
         </Route>
 
-        <Route path="*" element={<Navigate to={roleHomePath(role)} replace />} />
-      </Routes>
-    </ToastProvider>
+        {/* Doctor — top nav layout + full-screen recording */}
+        <Route element={<RequireRole allow={["DOCTOR"]} />}>
+          <Route element={<TopNavLayout links={DOCTOR_LINKS} />}>
+            <Route path="/doctor/patients" element={<DoctorPatients />} />
+            <Route path="/doctor/patients/:id" element={<PatientDetail />} />
+            <Route path="/doctor/profile" element={<ProfilePage />} />
+          </Route>
+          <Route path="/doctor/patients/:id/record" element={<RecordingFlow />} />
+        </Route>
+
+        {/* Nurse — top nav layout + full-screen recording */}
+        <Route element={<RequireRole allow={["NURSE"]} />}>
+          <Route element={<TopNavLayout links={NURSE_LINKS} />}>
+            <Route path="/nurse/tasks" element={<NurseTasks />} />
+            <Route path="/nurse/patients" element={<PatientListPage />} />
+            <Route path="/nurse/patients/:id" element={<PatientDetail />} />
+            <Route path="/nurse/profile" element={<ProfilePage />} />
+          </Route>
+          <Route path="/nurse/patients/:id/record" element={<RecordingFlow />} />
+        </Route>
+
+        {/* Supervisor — no persistent nav (single screen) */}
+        <Route element={<RequireRole allow={["SUPERVISOR"]} />}>
+          <Route path="/supervisor/dashboard" element={<SupervisorDashboard />} />
+        </Route>
+      </Route>
+
+      {/* Root redirect */}
+      <Route
+        path="/"
+        element={
+          role ? (
+            <Navigate to={ROLE_HOME[role]} replace />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Catch-all */}
+      <Route
+        path="*"
+        element={
+          role ? (
+            <Navigate to={ROLE_HOME[role]} replace />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+    </Routes>
   );
 }

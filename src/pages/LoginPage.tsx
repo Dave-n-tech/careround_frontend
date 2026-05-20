@@ -1,145 +1,197 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Field, Icons } from "@/components/ui";
-import { useForgotPasswordMutation, useLazyGetMeQuery, useLoginMutation, useResetPasswordMutation } from "@/services/api";
-import { appConfig } from "@/utils/config";
-import { roleHomePath } from "@/navigation/nav";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Eye, EyeOff, Activity } from "lucide-react";
+import { useAppDispatch } from "@/app/hooks";
+import { useLoginMutation, useLazyGetMeQuery } from "@/services/api";
+import { setMockAuth } from "@/features/auth/authSlice";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import type { Role, User } from "@/types/domain";
+
+const ROLE_HOME: Record<Role, string> = {
+  ADMIN: "/admin/dashboard",
+  DOCTOR: "/doctor/patients",
+  NURSE: "/nurse/tasks",
+  SUPERVISOR: "/supervisor/dashboard",
+};
+
+const DEV_ROLE_LABELS: { role: Role; label: string; email: string }[] = [
+  { role: "ADMIN", label: "Admin", email: "admin@demo.careround" },
+  { role: "DOCTOR", label: "Doctor", email: "doctor@demo.careround" },
+  { role: "NURSE", label: "Nurse", email: "nurse@demo.careround" },
+  { role: "SUPERVISOR", label: "Supervisor", email: "supervisor@demo.careround" },
+];
+
+function buildMockUser(role: Role): User {
+  const names: Record<Role, { first: string; last: string }> = {
+    ADMIN: { first: "Admin", last: "User" },
+    DOCTOR: { first: "Dr. James", last: "Adeyemi" },
+    NURSE: { first: "Sarah", last: "Okafor" },
+    SUPERVISOR: { first: "Ward", last: "Supervisor" },
+  };
+  const { first, last } = names[role];
+  return {
+    id: `mock-${role.toLowerCase()}`,
+    hospitalId: "mock-hospital",
+    firstName: first,
+    lastName: last,
+    email: `${role.toLowerCase()}@demo.careround`,
+    role,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 export default function LoginPage() {
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const [login, { isLoading }] = useLoginMutation();
   const [fetchMe] = useLazyGetMeQuery();
 
+  const [hospitalCode, setHospitalCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [resetOpen, setResetOpen] = useState(false);
-  const [resetToken, setResetToken] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [resetMessage, setResetMessage] = useState<string | null>(null);
-  const [forgotPassword, { isLoading: isRequestingReset }] = useForgotPasswordMutation();
-  const [resetPassword, { isLoading: isResettingPassword }] = useResetPasswordMutation();
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
 
-  const headline = useMemo(
-    () => "Digital ward management for the modern hospital.",
-    []
-  );
+  // Dev mode: selected role (null = not using mock)
+  const [devRole, setDevRole] = useState<Role | null>(null);
 
-  async function handleLogin() {
-    setError(null);
+  const isDev = import.meta.env.DEV;
 
-    try {
-      // API requires hospitalId — sourced from env for single-tenant deployment
-      const hospitalId = appConfig.hospitalId;
-      if (!hospitalId) {
-        setError("Hospital ID is not configured. Set VITE_HOSPITAL_ID in your environment.");
-        return;
-      }
-      await login({ hospitalId, email, password }).unwrap();
-      const me = await fetchMe().unwrap();
-      navigate(roleHomePath(me.role));
-    } catch {
-      setError("Invalid credentials. Please try again.");
-    }
-  }
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
 
-  async function requestReset() {
-    setError(null);
-    setResetMessage(null);
-    const hospitalId = appConfig.hospitalId;
-    if (!hospitalId || !email) {
-      setResetMessage("Enter your email first.");
+    // ── DEV mock login ────────────────────────────────────────────────────────
+    if (isDev && devRole) {
+      const mockUser = buildMockUser(devRole);
+      dispatch(setMockAuth({ user: mockUser, role: devRole, token: "mock-token" }));
+      navigate(ROLE_HOME[devRole], { replace: true });
       return;
     }
-    try {
-      const response = await forgotPassword({ hospitalId, email }).unwrap();
-      setResetToken(response.resetToken || "");
-      setResetMessage(response.resetToken ? "Reset token received. Set a new password below." : "Reset instructions sent.");
-    } catch {
-      setResetMessage("Could not request a reset token.");
-    }
-  }
 
-  async function submitReset() {
-    setResetMessage(null);
-    if (!resetToken || newPassword.length < 8) {
-      setResetMessage("Enter the reset token and a new password of at least 8 characters.");
+    // ── Real login ────────────────────────────────────────────────────────────
+    if (!hospitalCode || !email || !password) {
+      setError("All fields are required.");
       return;
     }
+
     try {
-      await resetPassword({ token: resetToken, newPassword }).unwrap();
-      setResetOpen(false);
-      setResetToken("");
-      setNewPassword("");
-      setResetMessage("Password reset. You can sign in now.");
-    } catch {
-      setResetMessage("Could not reset password.");
+      const result = await login({ hospitalCode, email, password }).unwrap();
+      await fetchMe();
+      navigate(ROLE_HOME[result.role], { replace: true });
+    } catch (err: unknown) {
+      const msg =
+        (err as { data?: { message?: string } })?.data?.message ??
+        "Invalid credentials. Please check your hospital code, email, and password.";
+      setError(msg);
     }
   }
 
   return (
-    <div className="min-h-screen grid md:grid-cols-2">
-      <div className="bg-[var(--cr-brand)] text-white p-6 sm:p-8 md:p-12 flex min-h-[360px] flex-col justify-between gap-10 md:min-h-screen" style={{ background: "linear-gradient(135deg, #083f74 0%, #0b5cab 100%)" }}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded bg-white/15 flex items-center justify-center">
-            <Icons.hospital size={20} />
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="w-full max-w-sm bg-white rounded-xl border border-[var(--cr-line)] shadow-sm p-8 flex flex-col gap-6">
+        {/* Logo */}
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-12 h-12 rounded-xl bg-[var(--cr-accent)] flex items-center justify-center">
+            <Activity size={24} className="text-white" />
           </div>
-          <div className="text-xl font-semibold">CareRound</div>
+          <h1 className="font-display text-xl font-bold text-[var(--cr-ink)]">CareRound</h1>
+          <p className="text-xs text-[var(--cr-muted)]">Ward Management Platform</p>
         </div>
-        <div className="space-y-4">
-          <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">{headline}</h1>
-          <p className="text-white/80 text-sm leading-relaxed max-w-md">
-            A unified system for patient admission, ward rounds, vitals tracking, and shift handover.
-            Built for multi-tenant hospitals and real-world clinical teams.
-          </p>
-        </div>
-        <div className="text-xs text-white/60 mono">v1.1 · ISO 27001 · NDPR compliant</div>
-      </div>
-      <div className="flex items-center justify-center bg-white/80 p-5 sm:p-8 md:p-10">
-        <div className="w-full max-w-md space-y-5">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight">Sign in</h2>
-            <p className="text-sm ink-mute mt-1">Use your hospital credentials to continue.</p>
-          </div>
-          <div className="space-y-3">
-            {error && (
-              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-                {error}
-              </div>
-            )}
-            <Field label="Email">
-              <input className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-            </Field>
-            <Field label="Password">
-              <input className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-            </Field>
-            <button className="btn btn-primary w-full justify-center py-2.5 mt-2" onClick={handleLogin} disabled={isLoading}>
-              {isLoading ? "Signing in..." : "Sign in"}
-            </button>
-            <div className="text-xs text-center">
-              <Link className="ink-mute hover:underline" to="/forgot-password">
-                Forgot password?
-              </Link>
+
+        {/* Dev role selector */}
+        {isDev && (
+          <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-3 flex flex-col gap-2">
+            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+              Dev Mode — Quick Login
+            </p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {DEV_ROLE_LABELS.map(({ role, label }) => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => {
+                    setDevRole(role);
+                    setEmail(role.toLowerCase() + "@demo.careround");
+                    setHospitalCode("DEMO");
+                    setPassword("password");
+                  }}
+                  className={`px-2 py-1.5 rounded text-xs font-medium border transition-colors ${
+                    devRole === role
+                      ? "bg-amber-500 text-white border-amber-500"
+                      : "bg-white text-amber-700 border-amber-300 hover:bg-amber-100"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-            {resetOpen && (
-              <div className="space-y-3 rounded border border-[var(--cr-line)] bg-slate-50 p-3">
-                <button className="btn w-full justify-center" type="button" onClick={requestReset} disabled={isRequestingReset}>
-                  {isRequestingReset ? "Requesting..." : "Request reset token"}
-                </button>
-                <Field label="Reset token">
-                  <input className="input mono" value={resetToken} onChange={(event) => setResetToken(event.target.value)} />
-                </Field>
-                <Field label="New password">
-                  <input className="input" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-                </Field>
-                <button className="btn btn-primary w-full justify-center" type="button" onClick={submitReset} disabled={isResettingPassword}>
-                  {isResettingPassword ? "Resetting..." : "Set new password"}
-                </button>
-              </div>
+            {devRole && (
+              <p className="text-xs text-amber-600">
+                Logging in as <strong>{devRole}</strong> — no real credentials needed.
+              </p>
             )}
-            {resetMessage && <div className="text-xs text-center ink-mute">{resetMessage}</div>}
           </div>
-        </div>
+        )}
+
+        {/* Login form */}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Input
+            label="Hospital Code"
+            placeholder="e.g. STMARYS"
+            value={hospitalCode}
+            onChange={(e) => setHospitalCode(e.target.value.toUpperCase())}
+            autoComplete="organization"
+            disabled={isDev && devRole !== null}
+          />
+          <Input
+            label="Email"
+            type="email"
+            placeholder="you@hospital.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            disabled={isDev && devRole !== null}
+          />
+          <Input
+            label="Password"
+            type={showPassword ? "text" : "password"}
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            disabled={isDev && devRole !== null}
+            rightElement={
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowPassword((v) => !v)}
+                className="text-[var(--cr-muted)] hover:text-[var(--cr-ink)]"
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            }
+          />
+
+          {error && (
+            <p className="text-xs text-[var(--cr-danger)] bg-[var(--cr-danger-bg)] rounded px-3 py-2">
+              {error}
+            </p>
+          )}
+
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            loading={isLoading}
+            className="w-full mt-1"
+          >
+            Sign In
+          </Button>
+        </form>
       </div>
     </div>
   );

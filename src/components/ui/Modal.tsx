@@ -1,42 +1,112 @@
-import type { ReactNode } from "react";
-import { Icons } from "./icons";
+import * as React from "react";
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "./button";
 
-type ModalProps = {
+interface ModalProps {
   open: boolean;
   onClose: () => void;
   title: string;
-  children: ReactNode;
-  footer?: ReactNode;
-  width?: number;
-};
+  children: React.ReactNode;
+  className?: string;
+  /** Width class override — default is max-w-lg */
+  width?: string;
+}
 
-export function Modal({ open, onClose, title, children, footer, width = 520 }: ModalProps) {
+function Modal({ open, onClose, title, children, className, width = "max-w-lg" }: ModalProps) {
+  React.useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
+
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/50 p-2 fadein sm:items-center sm:p-4"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
       <div
-        className="panel rounded w-full max-h-[94vh] shadow-2xl sm:max-h-[90vh]"
-        style={{ maxWidth: width }}
-        onClick={(event) => event.stopPropagation()}
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+        aria-hidden
+      />
+      {/* Panel */}
+      <div
+        className={cn(
+          "relative z-10 w-full bg-white rounded-xl shadow-xl flex flex-col max-h-[90vh]",
+          width,
+          className
+        )}
         role="dialog"
-        aria-modal="true"
+        aria-modal
+        aria-labelledby="modal-title"
       >
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b hairline sm:px-5">
-          <div className="font-semibold">{title}</div>
-          <button className="btn-ghost btn p-1.5" onClick={onClose}>
-            <Icons.x size={16} />
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--cr-line)]">
+          <h2 id="modal-title" className="text-base font-semibold text-[var(--cr-ink)]">
+            {title}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-[var(--cr-surface-3)] text-[var(--cr-muted)]"
+            aria-label="Close"
+          >
+            <X size={16} />
           </button>
         </div>
-        <div className="p-4 max-h-[70vh] overflow-y-auto scroll-thin sm:p-5">{children}</div>
-        {footer && (
-          <div className="px-4 py-3 border-t hairline flex flex-wrap justify-end gap-2 bg-slate-50 sm:px-5">
-            {footer}
-          </div>
-        )}
+        {/* Body */}
+        <div className="overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );
 }
+
+// ─── Confirm modal ────────────────────────────────────────────────────────────
+
+interface ConfirmModalProps {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  body: React.ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: "primary" | "destructive";
+  loading?: boolean;
+}
+
+function ConfirmModal({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  body,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  variant = "primary",
+  loading,
+}: ConfirmModalProps) {
+  return (
+    <Modal open={open} onClose={onClose} title={title} width="max-w-sm">
+      <div className="px-6 py-4 text-sm text-[var(--cr-ink-2)]">{body}</div>
+      <div className="px-6 py-4 border-t border-[var(--cr-line)] flex justify-end gap-3">
+        <Button variant="outline" size="md" onClick={onClose} disabled={loading}>
+          {cancelLabel}
+        </Button>
+        <Button
+          variant={variant === "destructive" ? "destructive" : "primary"}
+          size="md"
+          onClick={onConfirm}
+          loading={loading}
+        >
+          {confirmLabel}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+export { Modal, ConfirmModal };
