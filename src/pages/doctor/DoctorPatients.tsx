@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Pill } from "lucide-react";
-import { useGetAllPatientsQuery } from "@/services/api/patients";
+import { useGetPatientsQuery } from "@/services/api/patients";
 import { useGetPatientVitalsQuery } from "@/services/api/vitals";
 import { useGetPatientNotesQuery } from "@/services/api/clinicalNotes";
 import { useGetPatientPrescriptionsQuery } from "@/services/api/prescriptions";
@@ -123,7 +123,7 @@ function acuityOrder(c: AcuityColor): number {
 
 export default function DoctorPatients() {
   const navigate = useNavigate();
-  const { data: patientsData } = useGetAllPatientsQuery({ status: "ADMITTED" });
+  const { data: patientsData } = useGetPatientsQuery({ status: "ADMITTED" });
   const allPatients = patientsData ?? [];
 
   const [acuityFilter, setAcuityFilter] = useState<AcuityFilter>("ALL");

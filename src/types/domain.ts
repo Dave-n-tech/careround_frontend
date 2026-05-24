@@ -8,7 +8,12 @@ export type AcuityColor = "GREEN" | "AMBER" | "RED";
 export type VhiStatus = "STABLE" | "WATCH" | "CRITICAL";
 
 export type AdmissionType = "EMERGENCY" | "ELECTIVE" | "TRANSFER";
-export type PatientStatus = "ADMITTED" | "DISCHARGED";
+export type PatientStatus =
+  | "ADMITTED"
+  | "STABLE"
+  | "DETERIORATING"
+  | "DISCHARGE_READY"
+  | "DISCHARGED";
 export type PatientGender = "MALE" | "FEMALE" | "OTHER";
 
 export type NoteType =

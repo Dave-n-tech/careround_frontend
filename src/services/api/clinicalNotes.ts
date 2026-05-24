@@ -59,8 +59,8 @@ export const clinicalNotesApi = api.injectEndpoints({
       invalidatesTags: (_r, _e, arg) => [{ type: "ClinicalNotes", id: arg.patientId }],
     }),
     confirmNote: build.mutation<ConfirmNoteResponse, ConfirmNoteRequest>({
-      query: (body) => ({
-        url: `/clinical-notes/confirm`,
+      query: ({ patientId, ...body }) => ({
+        url: `/patients/${patientId}/notes/confirm`,
         method: "POST",
         body,
       }),

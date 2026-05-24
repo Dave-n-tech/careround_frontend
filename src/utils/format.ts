@@ -1,4 +1,4 @@
-import type { Patient, User } from "@/types/domain";
+import type { Patient, User, PatientStatus } from "@/types/domain";
 
 export function patientFullName(p: Pick<Patient, "firstName" | "lastName">) {
   return `${p.firstName} ${p.lastName}`;
@@ -58,4 +58,13 @@ export function ageFromDob(dateOfBirth: string): number {
   const m = today.getMonth() - dob.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
   return age;
+}
+
+export function isAdmitted(status: PatientStatus): boolean {
+  return (
+    status === "ADMITTED" ||
+    status === "STABLE" ||
+    status === "DETERIORATING" ||
+    status === "DISCHARGE_READY"
+  );
 }

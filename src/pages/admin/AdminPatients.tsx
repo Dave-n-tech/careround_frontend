@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Plus, Eye } from "lucide-react";
 import {
-  useGetAllPatientsQuery,
+  useGetPatientsQuery,
   useRegisterPatientMutation,
   useUpdatePatientStatusMutation,
 } from "@/services/api/patients";
@@ -366,7 +366,7 @@ function PatientViewModal({ open, patient: p, wardName, onClose, onDischarge }: 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AdminPatients() {
-  const { data: patientsData } = useGetAllPatientsQuery();
+  const { data: patientsData } = useGetPatientsQuery();
   const { data: wardsData } = useGetWardsQuery();
   const [registerPatient] = useRegisterPatientMutation();
   const [updatePatientStatus] = useUpdatePatientStatusMutation();
