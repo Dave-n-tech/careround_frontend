@@ -21,6 +21,23 @@ export interface RegisterPatientRequest {
   estimatedDischargeDate?: string;
 }
 
+export interface UpdatePatientRequest {
+  wardId?: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: PatientGender;
+  phoneNumber?: string;
+  address?: string;
+  previousConditions?: string;
+  currentMedications?: string;
+  allergies?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  admissionType: AdmissionType;
+  bedNumber?: string;
+}
+
 export const patientsApi = api.injectEndpoints({
   endpoints: (build) => ({
     // GET /patients — returns all hospital patients, optionally filtered by status (ADMIN only)
@@ -52,6 +69,14 @@ export const patientsApi = api.injectEndpoints({
       }),
       invalidatesTags: ["Patients"],
     }),
+    updatePatient: build.mutation<Patient, { patientId: string } & UpdatePatientRequest>({
+      query: ({ patientId, ...body }) => ({
+        url: `/patients/${patientId}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Patients"],
+    }),
   }),
   overrideExisting: false,
 });
@@ -62,4 +87,5 @@ export const {
   useGetPatientQuery,
   useRegisterPatientMutation,
   useUpdatePatientStatusMutation,
+  useUpdatePatientMutation,
 } = patientsApi;

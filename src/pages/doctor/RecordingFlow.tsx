@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAppSelector } from "@/app/hooks";
+import { tryRefresh } from "@/services/baseQuery";
 
 // ─── AI voice note API call ───────────────────────────────────────────────────
 
@@ -13,22 +14,44 @@ async function processVoiceNote(
   isNurse: boolean,
   onTranscriptionComplete: () => void,
 ): Promise<AiProcessingResult | null> {
-  const token = localStorage.getItem("cr_access_token");
   if (audioBlob.size === 0) return null;
-  console.log("[audio] blobSize:", audioBlob.size, "blobType:", audioBlob.type);
+  const signature = Array.from(new Uint8Array(await audioBlob.slice(0, 16).arrayBuffer()))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  console.log("[audio] blobSize:", audioBlob.size, "blobType:", audioBlob.type, "signature:", signature);
   const mode = isNurse ? "transcription_only" : "ward_round";
   const formData = new FormData();
   formData.append("audio", audioBlob, "recording.webm");
   formData.append("patient_id", patientId);
   formData.append("current_time", new Date().toISOString());
   formData.append("mode", mode);
-  try {
-    const res = await fetch(`${apiBaseUrl}/ai/process-voice-note`, {
+  async function doFetch() {
+    const t = localStorage.getItem("cr_access_token");
+    return fetch(`${apiBaseUrl}/ai/process-voice-note`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: {
+        Accept: "text/event-stream",
+        ...(t ? { Authorization: `Bearer ${t}` } : {}),
+      },
       body: formData,
     });
-    if (!res.ok || !res.body) return null;
+  }
+  try {
+    let res = await doFetch();
+    console.log("[processVoiceNote] initial response status:", res.status);
+    if (res.status === 401) {
+      console.log("[processVoiceNote] got 401, attempting token refresh");
+      const refreshed = await tryRefresh();
+      console.log("[processVoiceNote] refresh result:", refreshed);
+      if (!refreshed) return null;
+      res = await doFetch();
+      console.log("[processVoiceNote] retry response status:", res.status);
+    }
+    if (!res.ok || !res.body) {
+      const body = await res.text().catch(() => "(unreadable)");
+      console.error("[processVoiceNote] request failed:", res.status, body);
+      return null;
+    }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -64,6 +87,7 @@ async function processVoiceNote(
               /* malformed */
             }
           } else if (pendingEvent === "error") {
+            console.error("[processVoiceNote] SSE error event:", pendingData);
             return null;
           }
           pendingEvent = "";
@@ -180,7 +204,7 @@ function RecordingScreen({
         mr.ondataavailable = (e) => {
           if (e.data.size > 0) chunksRef.current.push(e.data);
         };
-        mr.start(100);
+        mr.start();
       })
       .catch(() => {
         setMicError(true);
@@ -761,7 +785,6 @@ function ReviewScreen({
   onSaved,
 }: Screen3Props) {
   const [confirmNote] = useConfirmNoteMutation();
-  console.log("[review] mounting ReviewScreen with result:", result);
   const [soap, setSoap] = useState<SoapContent>(result.clinicalNote);
   const [prescriptions, setPrescriptions] = useState<AiPrescription[]>(
     result.prescriptions,
@@ -769,6 +792,14 @@ function ReviewScreen({
   const [transcriptionOpen, setTranscriptionOpen] = useState(false);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    console.log("[review] AI result used to populate doctor form:", {
+      rawTranscription: result.rawTranscription,
+      clinicalNote: result.clinicalNote,
+      prescriptions: result.prescriptions,
+    });
+  }, [result]);
 
   async function handleSave() {
     setSaving(true);
@@ -1002,6 +1033,11 @@ export default function RecordingFlow() {
           patientId={patient.id}
           audioBlob={audioBlob}
           onDone={(result) => {
+            console.log("[flow] storing AI processing result for review:", {
+              rawTranscription: result.rawTranscription,
+              clinicalNote: result.clinicalNote,
+              prescriptions: result.prescriptions,
+            });
             setAiResult(result);
             setScreen("review");
           }}

@@ -15,6 +15,10 @@ export interface RecordVitalsRequest {
   spo2: number;            // required, 50–100
 }
 
+export interface UpdateVitalsRequest extends RecordVitalsRequest {
+  vitalsId: string;
+}
+
 export const vitalsApi = api.injectEndpoints({
   endpoints: (build) => ({
     getPatientVitals: build.query<PatientVitalsEnriched[], string>({
@@ -25,8 +29,16 @@ export const vitalsApi = api.injectEndpoints({
       query: ({ patientId, ...body }) => ({ url: `/patients/${patientId}/vitals`, method: "POST", body }),
       invalidatesTags: (_r, _e, arg) => [{ type: "Vitals", id: arg.patientId }, "Patients"],
     }),
+    updateVitals: build.mutation<PatientVitalsEnriched, UpdateVitalsRequest>({
+      query: ({ patientId, vitalsId, ...body }) => ({
+        url: `/patients/${patientId}/vitals/${vitalsId}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (_r, _e, arg) => [{ type: "Vitals", id: arg.patientId }, "Patients"],
+    }),
   }),
   overrideExisting: false,
 });
 
-export const { useGetPatientVitalsQuery, useRecordVitalsMutation } = vitalsApi;
+export const { useGetPatientVitalsQuery, useRecordVitalsMutation, useUpdateVitalsMutation } = vitalsApi;

@@ -11,6 +11,15 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function fmtOverdue(minutes: number): string {
+  if (minutes < 60) return `${minutes}m overdue`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h overdue`;
+  const days = Math.floor(hours / 24);
+  const rem = hours % 24;
+  return rem > 0 ? `${days}d ${rem}h overdue` : `${days}d overdue`;
+}
+
 function fmtDate(iso: string) {
   const d = new Date(iso);
   const today = new Date();
@@ -88,7 +97,7 @@ function TaskCard({ task, group }: { task: MedicationTaskEnriched; group: Group 
             {group === "OVERDUE" && task.minutesOverdue !== undefined && (
               <span className="flex items-center gap-1 text-xs text-red-600 font-medium">
                 <AlertTriangle size={11} />
-                {task.minutesOverdue}m overdue
+                {fmtOverdue(task.minutesOverdue)}
               </span>
             )}
           </div>
@@ -184,7 +193,7 @@ export default function NurseTasks() {
   const wardId = useAppSelector((s) => s.auth.user?.wardId);
   const { data: tasksData } = useGetMedicationTasksQuery(
     { wardId },
-    { skip: !wardId },
+    { skip: !wardId, pollingInterval: 30_000 },
   );
 
   const grouped: Record<Group, MedicationTaskEnriched[]> = {

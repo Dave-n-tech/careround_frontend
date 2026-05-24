@@ -49,10 +49,16 @@ const vhiVariant: Record<VhiStatus, "red" | "amber" | "green"> = {
   STABLE: "green",
 };
 
+const vhiLabel: Record<VhiStatus, string> = {
+  STABLE: "Stable",
+  WATCH: "Moderate",
+  CRITICAL: "Critical",
+};
+
 function VhiBadge({ score, status, size }: { score: number; status: VhiStatus; size?: "sm" | "lg" }) {
   return (
     <Badge variant={vhiVariant[status]} className={size === "lg" ? "text-sm px-3 py-1" : undefined}>
-      {score} · {status}
+      {score} · {vhiLabel[status]}
     </Badge>
   );
 }

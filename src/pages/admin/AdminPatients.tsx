@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
-import { Plus, Eye } from "lucide-react";
+import { Plus, Eye, Pencil, RefreshCw } from "lucide-react";
 import {
   useGetAllPatientsQuery,
   useRegisterPatientMutation,
   useUpdatePatientStatusMutation,
+  useUpdatePatientMutation,
 } from "@/services/api/patients";
 import { useGetWardsQuery } from "@/services/api/wards";
 import type { AdmissionType, Patient, PatientGender } from "@/types/domain";
@@ -289,9 +290,10 @@ interface PatientViewModalProps {
   wardName: string;
   onClose: () => void;
   onDischarge: () => void;
+  onReadmit: () => void;
 }
 
-function PatientViewModal({ open, patient: p, wardName, onClose, onDischarge }: PatientViewModalProps) {
+function PatientViewModal({ open, patient: p, wardName, onClose, onDischarge, onReadmit }: PatientViewModalProps) {
   const admissionTypeLabel: Record<string, string> = {
     EMERGENCY: "Emergency",
     ELECTIVE: "Elective",
@@ -356,6 +358,11 @@ function PatientViewModal({ open, patient: p, wardName, onClose, onDischarge }: 
                 Discharge
               </Button>
             )}
+            {p.status === "DISCHARGED" && (
+              <Button type="button" variant="primary" onClick={onReadmit}>
+                Readmit
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -363,19 +370,108 @@ function PatientViewModal({ open, patient: p, wardName, onClose, onDischarge }: 
   );
 }
 
+// ─── Readmit modal ────────────────────────────────────────────────────────────
+
+interface ReadmitForm {
+  wardId: string;
+  bedNumber: string;
+  admissionType: string;
+}
+
+interface ReadmitModalProps {
+  open: boolean;
+  onClose: () => void;
+  patient: Patient;
+  wards: { id: string; name: string }[];
+  onSave: (form: ReadmitForm) => Promise<void>;
+}
+
+function ReadmitModal({ open, onClose, patient, wards, onSave }: ReadmitModalProps) {
+  const [form, setForm] = useState<ReadmitForm>({ wardId: "", bedNumber: "", admissionType: "EMERGENCY" });
+  const [errors, setErrors] = useState<Partial<ReadmitForm>>({});
+  const [loading, setLoading] = useState(false);
+
+  function set(field: keyof ReadmitForm, value: string) {
+    setForm((f) => ({ ...f, [field]: value }));
+    setErrors((e) => ({ ...e, [field]: undefined }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const errs: Partial<ReadmitForm> = {};
+    if (!form.wardId) errs.wardId = "Required";
+    if (!form.admissionType) errs.admissionType = "Required";
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+    setLoading(true);
+    try {
+      await onSave(form);
+      setForm({ wardId: "", bedNumber: "", admissionType: "EMERGENCY" });
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Readmit Patient" width="max-w-md">
+      <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4">
+        <p className="text-sm text-[var(--cr-muted)]">
+          Readmitting <span className="font-semibold text-[var(--cr-ink)]">{patient.firstName} {patient.lastName}</span> ({patient.hospitalNumber})
+        </p>
+        <Select
+          label="Ward *"
+          value={form.wardId}
+          onChange={(e) => set("wardId", e.target.value)}
+          options={wards.map((w) => ({ value: w.id, label: w.name }))}
+          placeholder="Select ward"
+          error={errors.wardId}
+        />
+        <Input
+          label="Bed Number"
+          value={form.bedNumber}
+          onChange={(e) => set("bedNumber", e.target.value)}
+          placeholder="e.g. 4"
+        />
+        <Select
+          label="Admission Type *"
+          value={form.admissionType}
+          onChange={(e) => set("admissionType", e.target.value)}
+          options={[
+            { value: "EMERGENCY", label: "Emergency" },
+            { value: "ELECTIVE", label: "Elective" },
+            { value: "TRANSFER", label: "Transfer" },
+          ]}
+        />
+        <div className="flex justify-end gap-3 pt-2 border-t border-[var(--cr-line)]">
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" loading={loading}>
+            Readmit Patient
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AdminPatients() {
-  const { data: patientsData } = useGetAllPatientsQuery();
+  const { data: patientsData } = useGetAllPatientsQuery(undefined, { pollingInterval: 30_000 });
   const { data: wardsData } = useGetWardsQuery();
   const [registerPatient] = useRegisterPatientMutation();
   const [updatePatientStatus] = useUpdatePatientStatusMutation();
+  const [updatePatient] = useUpdatePatientMutation();
 
   const patients = patientsData ?? [];
   const wards = wardsData ?? [];
 
   const [registerOpen, setRegisterOpen] = useState(false);
   const [viewTarget, setViewTarget] = useState<Patient | null>(null);
+  const [editTarget, setEditTarget] = useState<Patient | null>(null);
+  const [readmitTarget, setReadmitTarget] = useState<Patient | null>(null);
   const [search, setSearch] = useState("");
   const [wardFilter, setWardFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -413,6 +509,50 @@ export default function AdminPatients() {
       bedNumber: form.bedNumber || undefined,
       admissionType: form.admissionType as AdmissionType,
     }).unwrap();
+  }
+
+  async function handleEdit(form: PatientForm) {
+    if (!editTarget) return;
+    await updatePatient({
+      patientId: editTarget.id,
+      firstName: form.firstName,
+      lastName: form.lastName,
+      dateOfBirth: form.dateOfBirth,
+      gender: form.gender as PatientGender,
+      phoneNumber: form.phoneNumber || undefined,
+      address: form.address || undefined,
+      previousConditions: form.previousConditions || undefined,
+      currentMedications: form.currentMedications || undefined,
+      allergies: form.allergies || undefined,
+      emergencyContactName: form.emergencyContactName || undefined,
+      emergencyContactPhone: form.emergencyContactPhone || undefined,
+      wardId: form.wardId || undefined,
+      bedNumber: form.bedNumber || undefined,
+      admissionType: form.admissionType as AdmissionType,
+    }).unwrap();
+  }
+
+  async function handleReadmit(form: ReadmitForm) {
+    if (!readmitTarget) return;
+    await updatePatient({
+      patientId: readmitTarget.id,
+      firstName: readmitTarget.firstName,
+      lastName: readmitTarget.lastName,
+      dateOfBirth: readmitTarget.dateOfBirth,
+      gender: readmitTarget.gender,
+      phoneNumber: readmitTarget.phoneNumber || undefined,
+      address: readmitTarget.address || undefined,
+      previousConditions: readmitTarget.previousConditions || undefined,
+      currentMedications: readmitTarget.currentMedications || undefined,
+      allergies: readmitTarget.allergies || undefined,
+      emergencyContactName: readmitTarget.emergencyContactName || undefined,
+      emergencyContactPhone: readmitTarget.emergencyContactPhone || undefined,
+      wardId: form.wardId,
+      bedNumber: form.bedNumber || undefined,
+      admissionType: form.admissionType as AdmissionType,
+    }).unwrap();
+    await updatePatientStatus({ patientId: readmitTarget.id, status: "ADMITTED" }).unwrap();
+    setViewTarget(null);
   }
 
   async function handleDischarge(patientId: string) {
@@ -512,14 +652,34 @@ export default function AdminPatients() {
                     </td>
                     <td className="text-[var(--cr-muted)] text-xs">{formatDate(patient.createdAt)}</td>
                     <td>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        title="View"
-                        onClick={() => setViewTarget(patient)}
-                      >
-                        <Eye size={13} />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="View"
+                          onClick={() => setViewTarget(patient)}
+                        >
+                          <Eye size={13} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Edit"
+                          onClick={() => setEditTarget(patient)}
+                        >
+                          <Pencil size={13} />
+                        </Button>
+                        {patient.status === "DISCHARGED" && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            title="Readmit"
+                            onClick={() => setReadmitTarget(patient)}
+                          >
+                            <RefreshCw size={13} />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -537,6 +697,17 @@ export default function AdminPatients() {
         onSave={handleRegister}
       />
 
+      {/* Edit modal */}
+      {editTarget && (
+        <PatientFormModal
+          open={!!editTarget}
+          onClose={() => setEditTarget(null)}
+          wards={wards.filter((w) => w.isActive)}
+          existing={editTarget}
+          onSave={handleEdit}
+        />
+      )}
+
       {/* View modal */}
       {viewTarget && (
         <PatientViewModal
@@ -545,6 +716,18 @@ export default function AdminPatients() {
           wardName={wardMap[viewTarget.wardId] ?? "—"}
           onClose={() => setViewTarget(null)}
           onDischarge={() => handleDischarge(viewTarget.id)}
+          onReadmit={() => { setReadmitTarget(viewTarget); setViewTarget(null); }}
+        />
+      )}
+
+      {/* Readmit modal */}
+      {readmitTarget && (
+        <ReadmitModal
+          open={!!readmitTarget}
+          onClose={() => setReadmitTarget(null)}
+          patient={readmitTarget}
+          wards={wards.filter((w) => w.isActive)}
+          onSave={handleReadmit}
         />
       )}
     </div>

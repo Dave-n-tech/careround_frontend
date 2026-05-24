@@ -100,7 +100,7 @@ export default function PatientListPage() {
 
   const { data: patientsData } = useGetPatientsQuery(
     { wardId: wardId! },
-    { skip: !wardId },
+    { skip: !wardId, pollingInterval: 30_000 },
   );
   const allPatients = (patientsData ?? []).filter((p) => p.status === "ADMITTED");
 

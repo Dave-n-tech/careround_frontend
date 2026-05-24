@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Mic, Plus, AlertTriangle, ChevronLeft, Pause, Play, Square, X } from "lucide-react";
+import { Mic, Plus, AlertTriangle, ChevronLeft, Pause, Play, Square, X, Pencil } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/app/hooks";
 import { clinicalNotesApi } from "@/services/api/clinicalNotes";
 import { toast } from "@/components/ui/toast";
+import { tryRefresh } from "@/services/baseQuery";
 import type { AiProcessingResult } from "@/types/domain";
 
 // ─── AI voice note API call ───────────────────────────────────────────────────
@@ -16,21 +17,35 @@ async function processVoiceNote(
   isNurse: boolean,
   onTranscriptionComplete: () => void,
 ): Promise<AiProcessingResult | null> {
-  const token = localStorage.getItem("cr_access_token");
   if (audioBlob.size === 0) return null;
-  console.log("[audio] blobSize:", audioBlob.size, "blobType:", audioBlob.type);
+  const signature = Array.from(new Uint8Array(await audioBlob.slice(0, 16).arrayBuffer()))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  console.log("[audio] blobSize:", audioBlob.size, "blobType:", audioBlob.type, "signature:", signature);
   const mode = isNurse ? "transcription_only" : "ward_round";
   const formData = new FormData();
   formData.append("audio", audioBlob, "recording.webm");
   formData.append("patient_id", patientId);
   formData.append("current_time", new Date().toISOString());
   formData.append("mode", mode);
-  try {
-    const res = await fetch(`${aiApiBaseUrl}/ai/process-voice-note`, {
+  async function doFetch() {
+    const t = localStorage.getItem("cr_access_token");
+    return fetch(`${aiApiBaseUrl}/ai/process-voice-note`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: {
+        Accept: "text/event-stream",
+        ...(t ? { Authorization: `Bearer ${t}` } : {}),
+      },
       body: formData,
     });
+  }
+  try {
+    let res = await doFetch();
+    if (res.status === 401) {
+      const refreshed = await tryRefresh();
+      if (!refreshed) return null;
+      res = await doFetch();
+    }
     if (!res.ok || !res.body) return null;
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -73,7 +88,8 @@ async function processVoiceNote(
   }
 }
 import { useGetPatientQuery } from "@/services/api/patients";
-import { useGetPatientVitalsQuery, useRecordVitalsMutation } from "@/services/api/vitals";
+import { useGetUsersQuery } from "@/services/api/users";
+import { useGetPatientVitalsQuery, useRecordVitalsMutation, useUpdateVitalsMutation } from "@/services/api/vitals";
 import { useGetPatientNotesQuery, useAddNoteMutation, useConfirmNoteMutation } from "@/services/api/clinicalNotes";
 import {
   useGetPatientPrescriptionsQuery,
@@ -221,7 +237,7 @@ function RecordingCard({ patientName, bedNumber, isNurse, patientId, onCancel, o
         const mr = new MediaRecorder(stream, { mimeType });
         mediaRef.current = mr;
         mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-        mr.start(100);
+        mr.start();
       })
       .catch(() => { setMicError(true); });
 
@@ -438,6 +454,8 @@ function OverviewTab({ patientId }: { patientId: string }) {
   const { data: notesData } = useGetPatientNotesQuery(patientId);
   const { data: rxData } = useGetPatientPrescriptionsQuery(patientId);
   const { data: patientData } = useGetPatientQuery(patientId);
+  const { data: usersData } = useGetUsersQuery();
+  const usersById = Object.fromEntries((usersData ?? []).map((u) => [u.id, u]));
 
   const patient = patientData;
   const vitals = vitalsData ?? [];
@@ -445,7 +463,9 @@ function OverviewTab({ patientId }: { patientId: string }) {
   const prescriptions = rxData ?? [];
 
   const latest = vitals[0];
-  const latestNote = notes[notes.length - 1];
+  const latestNote = notes.length > 0
+    ? [...notes].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+    : undefined;
   const activeMeds = prescriptions.filter((rx) => rx.status === "ACTIVE");
 
   const vhiGuidance: Record<string, string> = {
@@ -516,8 +536,12 @@ function OverviewTab({ patientId }: { patientId: string }) {
           <div className={`border-l-4 rounded p-3 ${NOTE_TYPE_COLORS[latestNote.noteType]}`}>
             <div className="flex items-start justify-between gap-2 mb-2">
               <div>
-                <p className="text-sm font-medium text-[var(--cr-ink)]">{latestNote.authorName}</p>
-                <p className="text-xs text-[var(--cr-muted)]">{latestNote.authorRole}</p>
+                <p className="text-sm font-medium text-[var(--cr-ink)]">
+                  {usersById[latestNote.authorId] ? `${usersById[latestNote.authorId].firstName} ${usersById[latestNote.authorId].lastName}` : (latestNote.authorName ?? latestNote.authorId)}
+                </p>
+                <p className="text-xs text-[var(--cr-muted)] lowercase first-letter:uppercase">
+                  {(usersById[latestNote.authorId]?.role ?? latestNote.authorRole ?? "").replace(/_/g, " ").toLowerCase()}
+                </p>
               </div>
               <div className="text-right">
                 <span className={`text-xs px-2 py-0.5 rounded font-medium ${NOTE_BADGE_COLORS[latestNote.noteType]}`}>
@@ -570,6 +594,8 @@ function NotesTab({
   onStartRecording: () => void;
 }) {
   const { data: notesData } = useGetPatientNotesQuery(patientId);
+  const { data: usersData } = useGetUsersQuery();
+  const usersById = Object.fromEntries((usersData ?? []).map((u) => [u.id, u]));
   const notes = notesData ?? [];
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -596,8 +622,12 @@ function NotesTab({
             <div key={note.id} className={`border-l-4 rounded p-3 ${NOTE_TYPE_COLORS[note.noteType]}`}>
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div>
-                  <p className="text-sm font-medium text-[var(--cr-ink)]">{note.authorName}</p>
-                  <p className="text-xs text-[var(--cr-muted)]">{note.authorRole}</p>
+                  <p className="text-sm font-medium text-[var(--cr-ink)]">
+                    {usersById[note.authorId] ? `${usersById[note.authorId].firstName} ${usersById[note.authorId].lastName}` : (note.authorName ?? note.authorId)}
+                  </p>
+                  <p className="text-xs text-[var(--cr-muted)] capitalize">
+                    {(usersById[note.authorId]?.role ?? note.authorRole ?? "").replace(/_/g, " ").toLowerCase()}
+                  </p>
                 </div>
                 <div className="text-right">
                   <span className={`text-xs px-2 py-0.5 rounded font-medium ${NOTE_BADGE_COLORS[note.noteType]}`}>
@@ -1015,13 +1045,40 @@ function barColor(score: number) {
 function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boolean }) {
   const { data: vitalsData } = useGetPatientVitalsQuery(patientId);
   const [recordVitals] = useRecordVitalsMutation();
+  const [updateVitals] = useUpdateVitalsMutation();
   const vitals = (vitalsData ?? []) as PatientVitalsEnriched[];
   const [range, setRange] = useState<VitalsRange>("48h");
   const [selectedVital, setSelectedVital] = useState<VitalKey>("pulse");
   const [recordOpen, setRecordOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<PatientVitalsEnriched | null>(null);
   const [vForm, setVForm] = useState({ pulse: "", systolicBp: "", diastolicBp: "", respiratoryRate: "", temperature: "", spo2: "" });
   const [vErrors, setVErrors] = useState<Partial<typeof vForm>>({});
   const [saving, setSaving] = useState(false);
+
+  const emptyVForm = { pulse: "", systolicBp: "", diastolicBp: "", respiratoryRate: "", temperature: "", spo2: "" };
+
+  function openEdit(v: PatientVitalsEnriched) {
+    setVForm({
+      pulse: v.pulse?.toString() ?? "",
+      systolicBp: v.systolicBp?.toString() ?? "",
+      diastolicBp: v.diastolicBp?.toString() ?? "",
+      respiratoryRate: v.respiratoryRate?.toString() ?? "",
+      temperature: v.temperature?.toString() ?? "",
+      spo2: v.spo2?.toString() ?? "",
+    });
+    setVErrors({});
+    setEditTarget(v);
+  }
+
+  function closeVitalsModal() {
+    setRecordOpen(false);
+    setEditTarget(null);
+    setVForm(emptyVForm);
+    setVErrors({});
+  }
+
+  const isEdited = (v: PatientVitalsEnriched) =>
+    new Date(v.updatedAt).getTime() - new Date(v.createdAt).getTime() > 2000;
 
   const rangeCutoff: Record<VitalsRange, number> = { "24h": 24, "48h": 48, "7d": 168, "all": Infinity };
   const cutoffMs = rangeCutoff[range] * 3600 * 1000;
@@ -1040,13 +1097,28 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
     }));
 
   const vhiPreview = countFilledVitals(vForm) >= 2 ? computeVhi(vForm) : null;
+  const VHI_LABELS: Record<string, string> = { STABLE: "Stable", WATCH: "Moderate", CRITICAL: "Critical" };
   const vhiGuide: Record<string, string> = {
     STABLE: "Routine monitoring.",
     WATCH: "Inform the floor doctor or re-check in 2 hours.",
     CRITICAL: "Urgent medical attention required immediately.",
   };
+  const vhiRangeLegend = (
+    <div className="flex items-center justify-center gap-4 mt-2 pt-2 border-t border-[var(--cr-line)]">
+      {[
+        { color: "#22c55e", label: "Stable", range: "0 – 2" },
+        { color: "#f59e0b", label: "Moderate", range: "3 – 4" },
+        { color: "#ef4444", label: "Critical", range: "5+" },
+      ].map(({ color, label, range }) => (
+        <div key={label} className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full inline-block shrink-0" style={{ backgroundColor: color }} />
+          <span className="text-[11px] text-[var(--cr-muted)]">{range} <span className="font-medium text-[var(--cr-ink-2)]">{label}</span></span>
+        </div>
+      ))}
+    </div>
+  );
 
-  async function handleRecordVitals(e: React.FormEvent) {
+  async function handleVitalsSubmit(e: React.FormEvent) {
     e.preventDefault();
     const errs: Partial<typeof vForm> = {};
     const n = (v: string) => Number(v);
@@ -1072,20 +1144,24 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
     if (Object.keys(errs).length > 0) { setVErrors(errs); return; }
     setVErrors({});
 
+    const payload = {
+      patientId,
+      pulse: n(vForm.pulse),
+      systolicBp: n(vForm.systolicBp),
+      diastolicBp: vForm.diastolicBp ? n(vForm.diastolicBp) : undefined,
+      respiratoryRate: n(vForm.respiratoryRate),
+      temperature: n(vForm.temperature),
+      spo2: n(vForm.spo2),
+    };
+
     setSaving(true);
     try {
-      await recordVitals({
-        patientId,
-        pulse: n(vForm.pulse),
-        systolicBp: n(vForm.systolicBp),
-        diastolicBp: vForm.diastolicBp ? n(vForm.diastolicBp) : undefined,
-        respiratoryRate: n(vForm.respiratoryRate),
-        temperature: n(vForm.temperature),
-        spo2: n(vForm.spo2),
-      }).unwrap();
-      setRecordOpen(false);
-      setVForm({ pulse: "", systolicBp: "", diastolicBp: "", respiratoryRate: "", temperature: "", spo2: "" });
-      setVErrors({});
+      if (editTarget) {
+        await updateVitals({ ...payload, vitalsId: editTarget.id }).unwrap();
+      } else {
+        await recordVitals(payload).unwrap();
+      }
+      closeVitalsModal();
     } finally { setSaving(false); }
   }
 
@@ -1093,7 +1169,7 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
     <div>
       {canWrite && (
         <div className="flex justify-end mb-4">
-          <Button variant="primary" size="sm" onClick={() => setRecordOpen(true)}>
+          <Button variant="primary" size="sm" onClick={() => { setVForm(emptyVForm); setVErrors({}); setRecordOpen(true); }}>
             <Plus size={13} /> Record Vitals
           </Button>
         </div>
@@ -1128,7 +1204,7 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
                   <XAxis dataKey="time" tick={{ fontSize: 10 }} />
                   <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} width={36} />
                   <Tooltip
-                    formatter={(val: number) => [`${val} ${activeTab.unit}`, activeTab.label]}
+                    formatter={(val) => [`${val ?? ""} ${activeTab.unit}`, activeTab.label]}
                     contentStyle={{ fontSize: 12 }}
                   />
                   <Bar dataKey="value" radius={[3, 3, 0, 0]}>
@@ -1140,7 +1216,7 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
               </ResponsiveContainer>
               {/* Legend */}
               <div className="flex items-center gap-4 mt-2 justify-center">
-                {[{ color: "#22c55e", label: "Normal" }, { color: "#f59e0b", label: "Watch" }, { color: "#ef4444", label: "Critical" }].map(({ color, label }) => (
+                {[{ color: "#22c55e", label: "Stable" }, { color: "#f59e0b", label: "Moderate" }, { color: "#ef4444", label: "Critical" }].map(({ color, label }) => (
                   <div key={label} className="flex items-center gap-1">
                     <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: color }} />
                     <span className="text-xs text-[var(--cr-muted)]">{label}</span>
@@ -1168,22 +1244,35 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
       <div className="overflow-x-auto">
         <table className="cr text-sm">
           <thead>
-            <tr><th>Time</th><th>Pulse</th><th>Sys. BP</th><th>Dia. BP</th><th>Resp.</th><th>Temp</th><th>SpO₂</th><th>VHI</th><th>By</th></tr>
+            <tr><th>Time</th><th>Pulse</th><th>Sys. BP</th><th>Dia. BP</th><th>Resp.</th><th>Temp</th><th>SpO₂</th><th>VHI</th><th>By</th>{canWrite && <th />}</tr>
           </thead>
           <tbody>
             {[...vitals].sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()).map((v) => {
               const bd = computeVhi(v);
+              const edited = isEdited(v);
               return (
                 <tr key={v.id}>
-                  <td className="text-xs text-[var(--cr-muted)]">{formatDateTime(v.recordedAt)}</td>
+                  <td className="text-xs text-[var(--cr-muted)]">
+                    <span>{formatDateTime(v.recordedAt)}</span>
+                    {edited && (
+                      <span className="ml-1.5 inline-block px-1 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">edited</span>
+                    )}
+                  </td>
                   <td className={bd.pulse >= 3 ? "text-red-600 font-semibold" : bd.pulse >= 1 ? "text-amber-600" : ""}>{v.pulse ?? "—"}</td>
                   <td className={bd.systolicBp >= 3 ? "text-red-600 font-semibold" : bd.systolicBp >= 1 ? "text-amber-600" : ""}>{v.systolicBp ?? "—"}</td>
                   <td>{v.diastolicBp ?? "—"}</td>
                   <td className={bd.respiratoryRate >= 3 ? "text-red-600 font-semibold" : bd.respiratoryRate >= 1 ? "text-amber-600" : ""}>{v.respiratoryRate ?? "—"}</td>
                   <td className={bd.temperature >= 3 ? "text-red-600 font-semibold" : bd.temperature >= 1 ? "text-amber-600" : ""}>{v.temperature ?? "—"}</td>
                   <td className={bd.spo2 >= 3 ? "text-red-600 font-semibold" : bd.spo2 >= 1 ? "text-amber-600" : ""}>{v.spo2 ?? "—"}</td>
-                  <td><span className={`text-xs font-semibold ${v.vhiStatus === "CRITICAL" ? "text-red-600" : v.vhiStatus === "WATCH" ? "text-amber-600" : "text-green-600"}`}>{v.vhiScore} {v.vhiStatus}</span></td>
+                  <td><span className={`text-xs font-semibold ${v.vhiStatus === "CRITICAL" ? "text-red-600" : v.vhiStatus === "WATCH" ? "text-amber-600" : "text-green-600"}`}>{v.vhiScore} {VHI_LABELS[v.vhiStatus]}</span></td>
                   <td className="text-xs text-[var(--cr-muted)]">{v.recordedByName}</td>
+                  {canWrite && (
+                    <td>
+                      <Button variant="ghost" size="icon-sm" title="Edit" onClick={() => openEdit(v)}>
+                        <Pencil size={12} />
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -1191,8 +1280,8 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
         </table>
       </div>
 
-      <Modal open={recordOpen} onClose={() => setRecordOpen(false)} title="Record Vitals">
-        <form onSubmit={handleRecordVitals} className="px-6 py-5 flex flex-col gap-4">
+      <Modal open={recordOpen || !!editTarget} onClose={closeVitalsModal} title={editTarget ? "Edit Vitals" : "Record Vitals"}>
+        <form onSubmit={handleVitalsSubmit} className="px-6 py-5 flex flex-col gap-4">
           {vhiPreview ? (
             <div className={`p-3 rounded border ${
               vhiPreview.status === "CRITICAL" ? "border-red-300 bg-red-50" :
@@ -1202,7 +1291,7 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-[var(--cr-muted)]">Vitals Health Index</p>
-                  <p className="text-xl font-bold text-[var(--cr-ink)]">{vhiPreview.total}</p>
+                  <p className="text-xl font-bold text-[var(--cr-ink)]">{vhiPreview.total} <span className="text-sm font-semibold">{VHI_LABELS[vhiPreview.status]}</span></p>
                   <p className="text-xs text-[var(--cr-muted)]">{vhiGuide[vhiPreview.status]}</p>
                 </div>
                 <VhiBadge score={vhiPreview.total} status={vhiPreview.status} />
@@ -1213,10 +1302,12 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
                   This patient will be flagged as Critical. A supervisor alert will be sent.
                 </div>
               )}
+              {vhiRangeLegend}
             </div>
           ) : (
-            <div className="p-3 rounded border border-[var(--cr-line)] bg-[var(--cr-surface-2)] text-xs text-[var(--cr-muted)] text-center">
-              Fill in vitals to see score
+            <div className="p-3 rounded border border-[var(--cr-line)] bg-[var(--cr-surface-2)]">
+              <p className="text-xs text-[var(--cr-muted)] text-center mb-1">Fill in vitals to see score</p>
+              {vhiRangeLegend}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -1228,8 +1319,8 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
             <Input label="SpO₂ (%) *" type="number" step="0.1" min={50} max={100} placeholder="50 – 100" value={vForm.spo2} onChange={(e) => setVForm((f) => ({ ...f, spo2: e.target.value }))} error={vErrors.spo2} />
           </div>
           <div className="flex justify-end gap-3 pt-2 border-t border-[var(--cr-line)]">
-            <Button type="button" variant="outline" onClick={() => setRecordOpen(false)} disabled={saving}>Cancel</Button>
-            <Button type="submit" variant="primary" loading={saving}>Save Vitals</Button>
+            <Button type="button" variant="outline" onClick={closeVitalsModal} disabled={saving}>Cancel</Button>
+            <Button type="submit" variant="primary" loading={saving}>{editTarget ? "Save Changes" : "Save Vitals"}</Button>
           </div>
         </form>
       </Modal>
@@ -1333,7 +1424,7 @@ export default function PatientDetail() {
 
     setSaving(true);
     try {
-      await addNote({ patientId: patient.id, noteType, content: noteContent }).unwrap();
+      await addNote({ patientId: patient.id, noteType, content: noteContent, isAiGenerated: false }).unwrap();
       setNoteContent("");
       setAddOpen(false);
     } finally {

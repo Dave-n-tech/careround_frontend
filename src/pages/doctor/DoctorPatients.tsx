@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Pill } from "lucide-react";
 import { useGetAllPatientsQuery } from "@/services/api/patients";
+import { useGetWardsQuery } from "@/services/api/wards";
 import { useGetPatientVitalsQuery } from "@/services/api/vitals";
 import { useGetPatientNotesQuery } from "@/services/api/clinicalNotes";
 import { useGetPatientPrescriptionsQuery } from "@/services/api/prescriptions";
@@ -11,7 +12,7 @@ import { timeAgo } from "@/utils/format";
 
 // ─── Patient card ─────────────────────────────────────────────────────────────
 
-function PatientCard({ patient, onClick }: { patient: Patient; onClick: () => void }) {
+function PatientCard({ patient, wardName, onClick }: { patient: Patient; wardName?: string; onClick: () => void }) {
   const { data: vitalsData } = useGetPatientVitalsQuery(patient.id);
   const { data: notesData } = useGetPatientNotesQuery(patient.id);
   const { data: rxData } = useGetPatientPrescriptionsQuery(patient.id);
@@ -42,11 +43,18 @@ function PatientCard({ patient, onClick }: { patient: Patient; onClick: () => vo
             <p className="text-base font-bold text-[var(--cr-ink)] leading-tight truncate">
               {patient.firstName} {patient.lastName}
             </p>
-            {patient.bedNumber && (
-              <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-xs bg-[var(--cr-surface-3)] text-[var(--cr-muted)]">
-                Bed {patient.bedNumber}
-              </span>
-            )}
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              {wardName && (
+                <span className="inline-block px-2 py-0.5 rounded text-xs bg-[var(--cr-surface-3)] text-[var(--cr-muted)]">
+                  {wardName}
+                </span>
+              )}
+              {patient.bedNumber && (
+                <span className="inline-block px-2 py-0.5 rounded text-xs bg-[var(--cr-surface-3)] text-[var(--cr-muted)]">
+                  Bed {patient.bedNumber}
+                </span>
+              )}
+            </div>
             {patient.primaryDiagnosis && (
               <p className="mt-1 text-sm text-[var(--cr-ink-2)] truncate">
                 {patient.primaryDiagnosis}
@@ -99,17 +107,17 @@ const FILTER_STYLES: Record<AcuityFilter, { active: string; inactive: string; la
   RED: {
     active: "bg-red-600 text-white",
     inactive: "bg-white text-red-600 border border-red-300",
-    label: "RED",
+    label: "Critical",
   },
   AMBER: {
     active: "bg-amber-500 text-white",
     inactive: "bg-white text-amber-600 border border-amber-300",
-    label: "AMBER",
+    label: "Moderate",
   },
   GREEN: {
     active: "bg-green-500 text-white",
     inactive: "bg-white text-green-600 border border-green-300",
-    label: "GREEN",
+    label: "Stable",
   },
 };
 
@@ -123,8 +131,13 @@ function acuityOrder(c: AcuityColor): number {
 
 export default function DoctorPatients() {
   const navigate = useNavigate();
-  const { data: patientsData } = useGetAllPatientsQuery({ status: "ADMITTED" });
+  const { data: patientsData } = useGetAllPatientsQuery({ status: "ADMITTED" }, { pollingInterval: 30_000 });
+  const { data: wardsData } = useGetWardsQuery();
   const allPatients = patientsData ?? [];
+  const wardMap = useMemo(
+    () => Object.fromEntries((wardsData ?? []).map((w) => [w.id, w.name])),
+    [wardsData],
+  );
 
   const [acuityFilter, setAcuityFilter] = useState<AcuityFilter>("ALL");
   const [search, setSearch] = useState("");
@@ -200,6 +213,7 @@ export default function DoctorPatients() {
             <PatientCard
               key={patient.id}
               patient={patient}
+              wardName={wardMap[patient.wardId]}
               onClick={() => navigate(`/doctor/patients/${patient.id}`)}
             />
           ))}
