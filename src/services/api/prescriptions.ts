@@ -13,7 +13,7 @@ export interface PrescriptionEnriched {
   frequencyHours: number;
   totalDoses: number;
   startTime: string;
-  administrationTimes: string[];
+  administrationTimes: AdministrationSlot[];
   confirmedById: string;
   confirmedAt: string;
   confirmedByName?: string;

@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Plus, Eye, Pencil, RefreshCw } from "lucide-react";
 import {
-  useGetAllPatientsQuery,
+  useGetPatientsQuery,
   useRegisterPatientMutation,
   useUpdatePatientStatusMutation,
   useUpdatePatientMutation,

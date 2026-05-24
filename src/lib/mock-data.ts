@@ -1,4 +1,4 @@
-﻿import type { Ward, User, Patient, SystemConfig } from "@/types/domain";
+﻿import type { Ward, User, Patient, SystemConfig, AdministrationSlot } from "@/types/domain";
 import type { PatientVitalsEnriched } from "@/services/api/vitals";
 import type { ClinicalNoteEnriched } from "@/services/api/clinicalNotes";
 import type { PrescriptionEnriched, MedicationTaskEnriched } from "@/services/api/prescriptions";
@@ -395,11 +395,11 @@ export const MOCK_NOTES: Record<string, ClinicalNoteEnriched[]> = {
 
 // â”€â”€â”€ Prescriptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function done(scheduledTime: string) {
-  return scheduledTime;
+function done(scheduledTime: string, completedByName?: string): AdministrationSlot {
+  return { scheduledTime, completedAt: scheduledTime, completedByName };
 }
-function pending(scheduledTime: string) {
-  return scheduledTime;
+function pending(scheduledTime: string): AdministrationSlot {
+  return { scheduledTime };
 }
 
 export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {

@@ -7,7 +7,7 @@ import { useGetPatientVitalsQuery } from "@/services/api/vitals";
 import { useGetPatientPrescriptionsQuery } from "@/services/api/prescriptions";
 import type { AcuityColor, Patient, Role } from "@/types/domain";
 import { AcuityStrip, VhiBadge } from "@/components/ui/badge";
-import { timeAgo } from "@/utils/format";
+import { timeAgo, isAdmitted } from "@/utils/format";
 
 // ─── Route prefix per role ────────────────────────────────────────────────────
 
@@ -102,7 +102,7 @@ export default function PatientListPage() {
     { wardId: wardId! },
     { skip: !wardId, pollingInterval: 30_000 },
   );
-  const allPatients = (patientsData ?? []).filter((p) => p.status === "ADMITTED");
+  const allPatients = (patientsData ?? []).filter((p) => isAdmitted(p.status));
 
   const [acuityFilter, setAcuityFilter] = useState<AcuityFilter>("ALL");
   const [search, setSearch] = useState("");

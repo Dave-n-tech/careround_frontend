@@ -40,17 +40,16 @@ export interface UpdatePatientRequest {
 
 export const patientsApi = api.injectEndpoints({
   endpoints: (build) => ({
-    // GET /patients — returns all hospital patients, optionally filtered by status (ADMIN only)
-    getAllPatients: build.query<Patient[], { status?: "ADMITTED" | "DISCHARGED" } | void>({
-      query: (arg) => ({
+    // Single unified endpoint — replaces both getAllPatients and getPatients
+    getPatients: build.query<Patient[], { wardId?: string; status?: string } | void>({
+      query: (params) => ({
         url: "/patients",
-        params: arg && (arg as { status?: string }).status ? { status: (arg as { status?: string }).status } : undefined,
+        params: params
+          ? Object.fromEntries(
+              Object.entries(params).filter(([, v]) => v !== undefined && v !== null)
+            )
+          : undefined,
       }),
-      providesTags: ["Patients"],
-    }),
-    // GET /patients/ward/{wardId} — returns admitted patients for a ward
-    getPatients: build.query<Patient[], { wardId: string }>({
-      query: ({ wardId }) => `/patients/ward/${wardId}`,
       providesTags: ["Patients"],
     }),
     getPatient: build.query<Patient, string>({
@@ -82,7 +81,6 @@ export const patientsApi = api.injectEndpoints({
 });
 
 export const {
-  useGetAllPatientsQuery,
   useGetPatientsQuery,
   useGetPatientQuery,
   useRegisterPatientMutation,

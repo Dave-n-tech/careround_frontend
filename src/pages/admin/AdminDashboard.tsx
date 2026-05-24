@@ -1,14 +1,14 @@
 import { useGetWardsQuery } from "@/services/api/wards";
 import { useGetUsersQuery } from "@/services/api/users";
-import { useGetAllPatientsQuery } from "@/services/api/patients";
+import { useGetPatientsQuery } from "@/services/api/patients";
 import { StatCard } from "@/components/ui/stat-card";
 import { AcuityBadge } from "@/components/ui/badge";
-import { formatDateTime, ageFromDob } from "@/utils/format";
+import { formatDateTime, ageFromDob, isAdmitted } from "@/utils/format";
 
 export default function AdminDashboard() {
   const { data: wards } = useGetWardsQuery();
   const { data: users } = useGetUsersQuery();
-  const { data: patients } = useGetAllPatientsQuery();
+  const { data: patients } = useGetPatientsQuery();
 
   const wardList = wards ?? [];
   const userList = users ?? [];
@@ -17,7 +17,7 @@ export default function AdminDashboard() {
   const totalWards = wardList.filter((w) => w.isActive).length;
   const totalDoctors = userList.filter((u) => u.role === "DOCTOR" && u.active).length;
   const totalNurses = userList.filter((u) => u.role === "NURSE" && u.active).length;
-  const patientsAdmitted = patientList.filter((p) => p.status === "ADMITTED").length;
+  const patientsAdmitted = patientList.filter((p) => isAdmitted(p.status)).length;
 
   const wardMap = Object.fromEntries(wardList.map((w) => [w.id, w.name]));
 
