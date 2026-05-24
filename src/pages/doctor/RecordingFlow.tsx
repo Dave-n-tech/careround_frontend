@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAppSelector } from "@/app/hooks";
 import { Pause, Play, Square, Plus, Trash2, ChevronDown, ChevronRight, Pencil } from "lucide-react";
@@ -26,20 +26,24 @@ const MOCK_AI_RESULT: AiProcessingResult = {
       "Continue IV furosemide 40mg BD. Commence bisoprolol 1.25mg OD tonight — titrate as tolerated. Repeat echo in 3 days. Consider introducing ramipril once systolic BP consistently > 110. Continue fluid restriction 1.5L/day. Cardiology outpatient follow-up to be arranged.",
   },
   prescriptions: [
-    {
-      drugName: "Bisoprolol",
-      dose: "1.25mg",
-      route: "Oral",
-      frequencyString: "Once daily",
-      frequencyHours: 24,
-      totalDoses: 7,
-      administrationTimes: Array.from({ length: 7 }, (_, i) => {
+    (() => {
+      const times = Array.from({ length: 7 }, (_, i) => {
         const d = new Date();
         d.setHours(21, 0, 0, 0);
         d.setDate(d.getDate() + i);
         return d.toISOString();
-      }),
-    },
+      });
+      return {
+        drugName: "Bisoprolol",
+        dose: "1.25mg",
+        route: "Oral",
+        frequencyString: "Once daily",
+        frequencyHours: 24,
+        totalDoses: 7,
+        startTime: times[0],
+        administrationTimes: times,
+      };
+    })(),
   ],
 };
 
@@ -285,7 +289,7 @@ function SoapEditor({ soap, onChange }: {
     <div className="flex flex-col gap-3">
       {fields.map((k) => (
         <div key={k}>
-          <label className="block text-xs font-bold uppercase tracking-wider text-[var(--cr-muted)] mb-1 capitalize">{k}</label>
+          <label className="block text-xs font-bold tracking-wider text-[var(--cr-muted)] mb-1 capitalize">{k}</label>
           <textarea
             value={soap[k]}
             onChange={(e) => onChange({ ...soap, [k]: e.target.value })}
@@ -402,11 +406,24 @@ function ReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: Sc
   async function handleSave() {
     setSaving(true);
     try {
+      const content = `Subjective:\n${soap.subjective}\n\nObjective:\n${soap.objective}\n\nAssessment:\n${soap.assessment}\n\nPlan:\n${soap.plan}`;
       await confirmNote({
         patientId,
+        noteType: "WARD_ROUND_NOTE",
+        content,
         rawTranscription: result.rawTranscription,
-        clinicalNote: soap,
-        prescriptions,
+        isAiGenerated: true,
+        extractPrescriptionsFromAi: false,
+        prescriptions: prescriptions.map((rx) => ({
+          drugName: rx.drugName,
+          dose: rx.dose,
+          route: rx.route,
+          frequencyString: rx.frequencyString,
+          frequencyHours: rx.frequencyHours,
+          totalDoses: rx.totalDoses,
+          startTime: rx.startTime,
+          administrationTimes: rx.administrationTimes,
+        })),
       }).unwrap();
       onSaved();
     } finally {
@@ -466,7 +483,7 @@ function ReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: Sc
         <button
           onClick={() => setPrescriptions((p) => [
             ...p,
-            { drugName: "", dose: "", route: "", frequencyString: "", frequencyHours: 6, totalDoses: 4, administrationTimes: [] },
+            { drugName: "", dose: "", route: "", frequencyString: "", frequencyHours: 6, totalDoses: 4, startTime: new Date().toISOString(), administrationTimes: [] },
           ])}
           className="flex items-center gap-2 text-sm text-[var(--cr-accent)] font-medium"
         >

@@ -1,5 +1,5 @@
 import { api } from "./baseApi";
-import type { ClinicalNote, NoteType, SoapContent, AiProcessingResult } from "@/types/domain";
+import type { ClinicalNote, NoteType } from "@/types/domain";
 
 export interface ClinicalNoteEnriched extends ClinicalNote {
   authorName: string;
@@ -10,38 +10,64 @@ export interface AddNoteRequest {
   patientId: string;
   noteType: NoteType;
   content: string;
+  rawTranscription?: string;
+  isAiGenerated?: boolean;
+}
+
+// Matches the backend CreatePrescriptionRequest schema
+export interface CreatePrescriptionRequest {
+  drugName: string;
+  dose: string;
+  route: string;
+  frequencyString: string;
+  frequencyHours?: number;
+  totalDoses?: number;
+  startTime: string;
+  administrationTimes: string[];
 }
 
 export interface ConfirmNoteRequest {
   patientId: string;
-  rawTranscription: string;
-  clinicalNote: SoapContent;
-  prescriptions: AiProcessingResult["prescriptions"];
+  noteType: NoteType;
+  content: string;
+  rawTranscription?: string;
+  isAiGenerated: boolean;
+  aiModelUsed?: string;
+  // true  → manual note: backend sends to AI to extract prescriptions; prescriptions must be []
+  // false → voice note: doctor reviewed AI-extracted prescriptions; prescriptions is non-empty
+  extractPrescriptionsFromAi: boolean;
+  prescriptions: CreatePrescriptionRequest[];
+}
+
+export interface ConfirmNoteResponse {
+  noteId: string;
+  prescriptionIds: string[];
 }
 
 export const clinicalNotesApi = api.injectEndpoints({
   endpoints: (build) => ({
     getPatientNotes: build.query<ClinicalNoteEnriched[], string>({
-      query: (patientId) => `/patients/${patientId}/notes`,
+      query: (patientId) => `/clinical-notes/patient/${patientId}`,
       providesTags: (_r, _e, id) => [{ type: "ClinicalNotes", id }],
     }),
     addNote: build.mutation<ClinicalNoteEnriched, AddNoteRequest>({
-      query: ({ patientId, ...body }) => ({
-        url: `/patients/${patientId}/notes`,
+      query: (body) => ({
+        url: `/clinical-notes`,
         method: "POST",
         body,
       }),
       invalidatesTags: (_r, _e, arg) => [{ type: "ClinicalNotes", id: arg.patientId }],
     }),
-    confirmNote: build.mutation<ClinicalNoteEnriched, ConfirmNoteRequest>({
-      query: ({ patientId, ...body }) => ({
-        url: `/patients/${patientId}/notes/confirm`,
+    confirmNote: build.mutation<ConfirmNoteResponse, ConfirmNoteRequest>({
+      query: (body) => ({
+        url: `/clinical-notes/confirm`,
         method: "POST",
         body,
       }),
       invalidatesTags: (_r, _e, arg) => [
         { type: "ClinicalNotes", id: arg.patientId },
         "Prescriptions",
+        "MedicationChart",
         "MedicationTasks",
         "Patients",
       ],

@@ -4,10 +4,11 @@ import { Mic, Plus, AlertTriangle, ChevronLeft, Pause, Play, Square, X } from "l
 import { useAppSelector } from "@/app/hooks";
 import { useGetPatientQuery } from "@/services/api/patients";
 import { useGetPatientVitalsQuery, useRecordVitalsMutation } from "@/services/api/vitals";
-import { useGetPatientNotesQuery, useAddNoteMutation } from "@/services/api/clinicalNotes";
+import { useGetPatientNotesQuery, useAddNoteMutation, useConfirmNoteMutation } from "@/services/api/clinicalNotes";
 import {
   useGetPatientPrescriptionsQuery,
-  useAddPrescriptionMutation,
+  useGetMedicationChartQuery,
+  useAddManualMedicationMutation,
   useUpdatePrescriptionMutation,
   useDiscontinuePrescriptionMutation,
 } from "@/services/api/prescriptions";
@@ -15,7 +16,7 @@ import {
   MOCK_PATIENTS, MOCK_VITALS, MOCK_NOTES, MOCK_PRESCRIPTIONS,
 } from "@/lib/mock-data";
 import type { NoteType, SoapContent, AdministrationSlot } from "@/types/domain";
-import type { PrescriptionEnriched, PatientVitalsEnriched } from "@/services/api";
+import type { MedicationChartResponse, PrescriptionEnriched, PatientVitalsEnriched } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
@@ -450,12 +451,15 @@ const NURSE_NOTE_TYPES = [
 
 function NotesTab({
   patientId, canWrite, recording, onAddNote, onStartRecording,
+  prescriptionNotice, onDismissPrescriptionNotice,
 }: {
   patientId: string;
   canWrite: boolean;
   recording: boolean;
   onAddNote: () => void;
   onStartRecording: () => void;
+  prescriptionNotice: boolean;
+  onDismissPrescriptionNotice: () => void;
 }) {
   const { data: notesData } = useGetPatientNotesQuery(patientId);
   const notes = notesData ?? MOCK_NOTES[patientId] ?? [];
@@ -467,6 +471,17 @@ function NotesTab({
 
   return (
     <div className="flex flex-col">
+      {prescriptionNotice && (
+        <div className="flex items-start gap-3 mb-4 p-3 bg-teal-50 border border-teal-200 rounded-lg text-sm text-teal-800">
+          <p className="flex-1">
+            Ward round note saved. Prescriptions are being extracted — check the{" "}
+            <strong>Medications</strong> tab shortly.
+          </p>
+          <button onClick={onDismissPrescriptionNotice} className="text-teal-500 hover:text-teal-700 shrink-0">
+            <X size={16} />
+          </button>
+        </div>
+      )}
       {canWrite && (
         <div className="flex justify-end mb-4">
           <Button variant="outline" size="sm" onClick={onAddNote}>
@@ -522,8 +537,8 @@ function TimeChip({ slot }: { slot: AdministrationSlot }) {
   const t = new Date(slot.scheduledTime);
   const diff = (t.getTime() - now.getTime()) / 60000;
   const status: "pending" | "due-soon" | "completed" | "overdue" =
-    slot.completedAt ? "completed" :
-    t < now ? "overdue" :
+    slot.taskStatus === "COMPLETED" || slot.completedAt ? "completed" :
+    slot.taskStatus === "OVERDUE" || t < now ? "overdue" :
     diff <= 30 ? "due-soon" :
     "pending";
 
@@ -581,8 +596,22 @@ function fmtDayHeader(key: string): { weekday: string; date: string } {
   };
 }
 
+function frequencyLabel(hours: number): string {
+  const labels: Record<number, string> = {
+    24: "Once daily", 12: "Twice daily", 8: "Three times daily", 6: "Four times daily",
+  };
+  return labels[hours] ?? `Every ${hours} hours`;
+}
+
+function computeAdministrationTimes(startTime: string, frequencyHours: number, totalDoses: number): string[] {
+  const start = new Date(startTime).getTime();
+  return Array.from({ length: totalDoses }, (_, i) =>
+    new Date(start + i * frequencyHours * 3600 * 1000).toISOString()
+  );
+}
+
 function AddMedModal({ open, onClose, patientId }: { open: boolean; onClose: () => void; patientId: string }) {
-  const [addPrescription] = useAddPrescriptionMutation();
+  const [addManualMedication] = useAddManualMedicationMutation();
   const [form, setForm] = useState({
     drugName: "", dose: "", route: "", frequencyHours: "6", totalDoses: "4",
     startTime: new Date().toISOString().slice(0, 16),
@@ -593,10 +622,19 @@ function AddMedModal({ open, onClose, patientId }: { open: boolean; onClose: () 
     e.preventDefault();
     setSaving(true);
     try {
-      await addPrescription({
-        patientId, drugName: form.drugName, dose: form.dose, route: form.route,
-        frequencyHours: Number(form.frequencyHours), totalDoses: Number(form.totalDoses),
-        startTime: new Date(form.startTime).toISOString(),
+      const startIso = new Date(form.startTime).toISOString();
+      const freqHours = Number(form.frequencyHours);
+      const doses = Number(form.totalDoses);
+      await addManualMedication({
+        patientId,
+        drugName: form.drugName,
+        dose: form.dose,
+        route: form.route,
+        frequencyString: frequencyLabel(freqHours),
+        frequencyHours: freqHours,
+        totalDoses: doses,
+        startTime: startIso,
+        administrationTimes: computeAdministrationTimes(startIso, freqHours, doses),
       }).unwrap();
       onClose();
     } finally { setSaving(false); }
@@ -627,18 +665,18 @@ function AddMedModal({ open, onClose, patientId }: { open: boolean; onClose: () 
 }
 
 function EditMedModal({
-  open, onClose, rx, patientId,
+  open, onClose, chart, patientId,
 }: {
-  open: boolean; onClose: () => void; rx: PrescriptionEnriched; patientId: string;
+  open: boolean; onClose: () => void; chart: MedicationChartResponse; patientId: string;
 }) {
   const [updatePrescription] = useUpdatePrescriptionMutation();
   const [form, setForm] = useState({
-    drugName: rx.drugName,
-    dose: rx.dose,
-    route: rx.route,
-    frequencyHours: String(rx.frequencyHours),
-    totalDoses: String(rx.totalDoses),
-    startTime: new Date(rx.startTime).toISOString().slice(0, 16),
+    drugName: chart.drugName,
+    dose: chart.dose,
+    route: chart.route,
+    frequencyHours: String(chart.frequencyHours),
+    totalDoses: String(chart.totalDoses),
+    startTime: new Date(chart.startTime).toISOString().slice(0, 16),
   });
   const [saving, setSaving] = useState(false);
 
@@ -647,7 +685,7 @@ function EditMedModal({
     setSaving(true);
     try {
       await updatePrescription({
-        prescriptionId: rx.id,
+        prescriptionId: chart.prescriptionId,
         patientId,
         drugName: form.drugName,
         dose: form.dose,
@@ -685,11 +723,35 @@ function EditMedModal({
 }
 
 function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: boolean }) {
-  const { data: rxData } = useGetPatientPrescriptionsQuery(patientId);
+  const { data: chartData } = useGetMedicationChartQuery(patientId);
   const [discontinuePrescription] = useDiscontinuePrescriptionMutation();
-  const prescriptions = rxData ?? MOCK_PRESCRIPTIONS[patientId] ?? [];
+
+  // Use chart data (enriched with administrationSlots) when available; fall back to mock prescriptions
+  // shaped as chart entries for the MAR table
+  const mockCharts: MedicationChartResponse[] = (MOCK_PRESCRIPTIONS[patientId] ?? []).map((rx) => ({
+    id: rx.id,
+    patientId,
+    hospitalId: rx.hospitalId,
+    prescriptionId: rx.id,
+    status: rx.status,
+    createdAt: rx.createdAt,
+    updatedAt: rx.updatedAt,
+    drugName: rx.drugName,
+    dose: rx.dose,
+    route: rx.route,
+    frequencyString: rx.frequencyString,
+    frequencyHours: rx.frequencyHours,
+    totalDoses: rx.totalDoses,
+    startTime: rx.startTime,
+    confirmedById: rx.confirmedById,
+    confirmedByName: rx.confirmedByName,
+    administrationSlots: rx.administrationTimes.map((t) => ({ scheduledTime: t })),
+  }));
+
+  const charts = chartData ?? mockCharts;
+
   const [addMedOpen, setAddMedOpen] = useState(false);
-  const [editRx, setEditRx] = useState<PrescriptionEnriched | null>(null);
+  const [editRx, setEditRx] = useState<MedicationChartResponse | null>(null);
   const [confirmDisc, setConfirmDisc] = useState<string | null>(null); // prescriptionId
   const [discarding, setDiscarding] = useState(false);
 
@@ -702,15 +764,15 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
     } finally { setDiscarding(false); }
   }
 
-  // Collect all unique day keys across every prescription
+  // Collect all unique day keys across every chart entry
   const daySet = new Set<string>();
-  for (const rx of prescriptions) {
-    for (const slot of rx.administrationTimes) daySet.add(dayKey(slot.scheduledTime));
+  for (const chart of charts) {
+    for (const slot of chart.administrationSlots) daySet.add(dayKey(slot.scheduledTime));
   }
   const days = [...daySet].sort();
   const todayStr = dayKey(new Date().toISOString());
 
-  const discRx = prescriptions.find((rx) => rx.id === confirmDisc);
+  const discChart = charts.find((c) => c.prescriptionId === confirmDisc);
 
   return (
     <div>
@@ -722,7 +784,7 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
         </div>
       )}
 
-      {prescriptions.length === 0 ? (
+      {charts.length === 0 ? (
         <p className="text-sm text-[var(--cr-muted)] text-center py-8">No medications prescribed.</p>
       ) : (
         <div className="overflow-x-auto border border-[var(--cr-line)] rounded-lg">
@@ -752,29 +814,31 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
               </tr>
             </thead>
             <tbody>
-              {prescriptions.map((rx, idx) => {
-                const isDiscontinued = rx.status === "DISCONTINUED";
+              {charts.map((chart, idx) => {
+                const isDiscontinued = chart.status === "DISCONTINUED";
                 const rowBg = idx % 2 === 0 ? "#ffffff" : "var(--cr-surface-2)";
 
-                // Group this prescription's slots by day
+                // Group this chart's slots by day
                 const slotsByDay: Record<string, AdministrationSlot[]> = {};
-                for (const slot of rx.administrationTimes) {
+                for (const slot of chart.administrationSlots) {
                   const dk = dayKey(slot.scheduledTime);
                   if (!slotsByDay[dk]) slotsByDay[dk] = [];
                   slotsByDay[dk].push(slot);
                 }
 
                 return (
-                  <tr key={rx.id} className={isDiscontinued ? "opacity-50" : ""}>
+                  <tr key={chart.id} className={isDiscontinued ? "opacity-50" : ""}>
                     {/* Sticky left column — medication info */}
                     <td
                       className="sticky left-0 z-10 px-4 py-3 border-r border-[var(--cr-line)] align-top"
                       style={{ backgroundColor: rowBg }}
                     >
-                      <p className="font-semibold text-[var(--cr-ink)] leading-tight">{rx.drugName}</p>
-                      <p className="text-xs text-[var(--cr-ink-2)] mt-0.5">{rx.dose} · {rx.route}</p>
-                      <p className="text-xs text-[var(--cr-muted)]">{rx.frequencyString}</p>
-                      <p className="text-xs text-[var(--cr-muted)]">{rx.totalDoses} doses · by {rx.confirmedByName}</p>
+                      <p className="font-semibold text-[var(--cr-ink)] leading-tight">{chart.drugName}</p>
+                      <p className="text-xs text-[var(--cr-ink-2)] mt-0.5">{chart.dose} · {chart.route}</p>
+                      <p className="text-xs text-[var(--cr-muted)]">{chart.frequencyString}</p>
+                      <p className="text-xs text-[var(--cr-muted)]">
+                        {chart.totalDoses} doses{chart.confirmedByName ? ` · by ${chart.confirmedByName}` : ""}
+                      </p>
                       {isDiscontinued ? (
                         <span className="mt-1.5 inline-block text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">
                           Discontinued
@@ -785,14 +849,14 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
                             variant="outline"
                             size="sm"
                             className="border-[var(--cr-accent)] text-[var(--cr-accent)] hover:bg-teal-50"
-                            onClick={() => setEditRx(rx)}
+                            onClick={() => setEditRx(chart)}
                           >
                             Edit
                           </Button>
                           <Button
                             variant="outline-destructive"
                             size="sm"
-                            onClick={() => setConfirmDisc(rx.id)}
+                            onClick={() => setConfirmDisc(chart.prescriptionId)}
                           >
                             Discontinue
                           </Button>
@@ -833,7 +897,7 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
         <EditMedModal
           open={!!editRx}
           onClose={() => setEditRx(null)}
-          rx={editRx}
+          chart={editRx}
           patientId={patientId}
         />
       )}
@@ -843,7 +907,7 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
         onClose={() => setConfirmDisc(null)}
         onConfirm={handleDisc}
         title="Discontinue medication?"
-        body={discRx ? `${discRx.drugName} — all future scheduled doses will be cancelled.` : ""}
+        body={discChart ? `${discChart.drugName} — all future scheduled doses will be cancelled.` : ""}
         confirmLabel="Discontinue"
         variant="destructive"
         loading={discarding}
@@ -1024,6 +1088,7 @@ export default function PatientDetail() {
   const role = useAppSelector((s) => s.auth.role);
   const { data: patientData } = useGetPatientQuery(id ?? "");
   const [addNote] = useAddNoteMutation();
+  const [confirmNote] = useConfirmNoteMutation();
 
   const canWrite = role === "DOCTOR" || role === "NURSE";
   const isNurse = role === "NURSE";
@@ -1038,6 +1103,7 @@ export default function PatientDetail() {
   const [noteType, setNoteType] = useState<NoteType>(isNurse ? "HANDOVER_NOTE" : "WARD_ROUND_NOTE");
   const [noteContent, setNoteContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [prescriptionProcessingNotice, setPrescriptionProcessingNotice] = useState(false);
 
   function openAddNote(prefillContent?: string, prefillType?: NoteType) {
     setNoteContent(prefillContent ?? "");
@@ -1054,7 +1120,20 @@ export default function PatientDetail() {
     if (!noteContent.trim() || !patient) return;
     setSaving(true);
     try {
-      await addNote({ patientId: patient.id, noteType, content: noteContent }).unwrap();
+      if (noteType === "WARD_ROUND_NOTE" && !isNurse) {
+        // Manual ward round note — send to AI for prescription extraction (fire-and-forget)
+        await confirmNote({
+          patientId: patient.id,
+          noteType: "WARD_ROUND_NOTE",
+          content: noteContent,
+          isAiGenerated: false,
+          extractPrescriptionsFromAi: true,
+          prescriptions: [],
+        }).unwrap();
+        setPrescriptionProcessingNotice(true);
+      } else {
+        await addNote({ patientId: patient.id, noteType, content: noteContent }).unwrap();
+      }
       setNoteContent("");
       setAddOpen(false);
     } finally {
@@ -1145,6 +1224,8 @@ export default function PatientDetail() {
               recording={recording}
               onAddNote={() => openAddNote()}
               onStartRecording={() => setRecording(true)}
+              prescriptionNotice={prescriptionProcessingNotice}
+              onDismissPrescriptionNotice={() => setPrescriptionProcessingNotice(false)}
             />
           )}
           {activeTab === "medications" && <MedicationsTab patientId={patient.id} canWrite={canWrite} />}

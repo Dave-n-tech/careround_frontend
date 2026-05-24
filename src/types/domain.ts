@@ -65,7 +65,8 @@ export interface User {
   lastName: string;
   email: string;
   role: Role;
-  isActive: boolean;
+  wardId?: string;
+  active: boolean;
   fcmToken?: string;
   createdAt: string;
   updatedAt: string;
@@ -140,9 +141,12 @@ export interface SoapContent {
 }
 
 export interface AdministrationSlot {
+  taskId?: string;
   scheduledTime: string;
+  taskStatus?: TaskStatus;
   completedAt?: string;
   completedByName?: string;
+  actualDoseGiven?: string;
 }
 
 export interface Prescription {
@@ -212,6 +216,7 @@ export interface AiPrescription {
   frequencyString: string;
   frequencyHours: number;
   totalDoses: number;
+  startTime: string;
   administrationTimes: string[];
 }
 
@@ -241,46 +246,43 @@ export interface ApiResponse<T> {
 
 // ─── Supervisor dashboard ─────────────────────────────────────────────────────
 
-export interface SupervisorDashboard {
+export interface SupervisorDashboardResponse {
   wardId: string;
   wardName: string;
-  totalPatients: number;
-  tasksCompleted: number;
-  tasksTotal: number;
-  tasksOverdue: number;
-  completionRate: number;
+  specialty?: string;
+  totalBeds: number;
+  occupiedBeds: number;
   patients: SupervisorPatientSummary[];
-  overdueTasks: SupervisorOverdueTask[];
-  hourlyCompletion: HourlyCompletionPoint[];
+  taskStats: SupervisorTaskStats;
+  overdueAlerts: SupervisorOverdueAlert[];
+  hourlyChart: HourlyTaskCount[];
 }
 
 export interface SupervisorPatientSummary {
   patientId: string;
-  fullName: string;
-  bedNumber?: string;
+  firstName: string;
+  lastName: string;
   acuityColor: AcuityColor;
-  vhiScore: number;
-  vhiStatus: VhiStatus;
-  activemedications: string[];
-  tasksCompleted: number;
-  tasksTotal: number;
-  tasksOverdue: number;
-  lastVitalsAt?: string;
+  admissionDate: string;
+  wardId: string;
 }
 
-export interface SupervisorOverdueTask {
+export interface SupervisorTaskStats {
+  pendingCount: number;
+  overdueCount: number;
+  completedTodayCount: number;
+}
+
+export interface SupervisorOverdueAlert {
   taskId: string;
+  patientId: string;
   patientName: string;
-  bedNumber?: string;
-  drugName: string;
-  dose: string;
+  assignedNurseId?: string;
+  scheduledTime: string;
   minutesOverdue: number;
-  assignedNurseName?: string;
 }
 
-export interface HourlyCompletionPoint {
+export interface HourlyTaskCount {
   hour: string;
-  completed: number;
-  total: number;
-  rate: number;
+  taskCount: number;
 }

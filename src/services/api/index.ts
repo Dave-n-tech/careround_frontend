@@ -8,3 +8,4 @@ export * from "./vitals";
 export * from "./clinicalNotes";
 export * from "./prescriptions";
 export * from "./onboarding";
+export * from "./supervisor";

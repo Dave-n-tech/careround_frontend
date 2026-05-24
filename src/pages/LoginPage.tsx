@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ClipboardList, Pill, Activity, ShieldCheck } from "lucide-react";
-import { useAppDispatch } from "@/app/hooks";
 import { useLoginMutation, useLazyGetMeQuery } from "@/services/api";
-import { setMockAuth } from "@/features/auth/authSlice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Role, User } from "@/types/domain";
+import type { Role } from "@/types/domain";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -17,41 +15,11 @@ const ROLE_HOME: Record<Role, string> = {
   SUPERVISOR: "/supervisor/dashboard",
 };
 
-const DEV_ROLES: { role: Role; label: string }[] = [
-  { role: "ADMIN",      label: "Admin"      },
-  { role: "DOCTOR",     label: "Doctor"     },
-  { role: "NURSE",      label: "Nurse"      },
-  { role: "SUPERVISOR", label: "Supervisor" },
-];
-
 const FEATURES = [
   { icon: ClipboardList, text: "AI-assisted ward round notes & SOAP structuring" },
   { icon: Pill,          text: "Live medication administration record & escalation" },
   { icon: Activity,      text: "Vitals Health Index with real-time supervisor alerts" },
 ];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function buildMockUser(role: Role): User {
-  const names: Record<Role, { first: string; last: string }> = {
-    ADMIN:      { first: "Admin",     last: "User"       },
-    DOCTOR:     { first: "Dr. James", last: "Adeyemi"    },
-    NURSE:      { first: "Sarah",     last: "Okafor"     },
-    SUPERVISOR: { first: "Ward",      last: "Supervisor" },
-  };
-  const { first, last } = names[role];
-  return {
-    id: `mock-${role.toLowerCase()}`,
-    hospitalId: "mock-hospital",
-    firstName: first,
-    lastName: last,
-    email: `${role.toLowerCase()}@demo.careround`,
-    role,
-    isActive: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-}
 
 // ─── Left branding panel ──────────────────────────────────────────────────────
 
@@ -101,7 +69,6 @@ function BrandPanel() {
 // ─── Login page ───────────────────────────────────────────────────────────────
 
 export default function LoginPage() {
-  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const [login, { isLoading }] = useLoginMutation();
   const [fetchMe] = useLazyGetMeQuery();
@@ -111,20 +78,10 @@ export default function LoginPage() {
   const [password, setPassword]         = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError]               = useState("");
-  const [devRole, setDevRole]           = useState<Role | null>(null);
-
-  const isDev = import.meta.env.DEV;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-
-    if (isDev && devRole) {
-      const mockUser = buildMockUser(devRole);
-      dispatch(setMockAuth({ user: mockUser, role: devRole, token: "mock-token" }));
-      navigate(ROLE_HOME[devRole], { replace: true });
-      return;
-    }
 
     if (!hospitalCode || !email || !password) {
       setError("All fields are required.");
@@ -178,42 +135,6 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Dev role selector */}
-            {isDev && (
-              <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-3 flex flex-col gap-2 mb-6">
-                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
-                  Dev — Quick Login
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                  {DEV_ROLES.map(({ role, label }) => (
-                    <button
-                      key={role}
-                      type="button"
-                      onClick={() => {
-                        setDevRole(role);
-                        setEmail(role.toLowerCase() + "@demo.careround");
-                        setHospitalCode("DEMO");
-                        setPassword("password");
-                      }}
-                      className={`py-1.5 rounded text-xs font-medium border transition-colors ${
-                        devRole === role
-                          ? "bg-amber-500 text-white border-amber-500"
-                          : "bg-white text-amber-700 border-amber-300 hover:bg-amber-100"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                {devRole && (
-                  <p className="text-xs text-amber-600">
-                    Signing in as <strong>{devRole}</strong>
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Form */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <Input
                 label="Hospital Code"
@@ -221,7 +142,6 @@ export default function LoginPage() {
                 value={hospitalCode}
                 onChange={(e) => setHospitalCode(e.target.value.toUpperCase())}
                 autoComplete="organization"
-                disabled={isDev && devRole !== null}
               />
               <Input
                 label="Email"
@@ -230,7 +150,6 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
-                disabled={isDev && devRole !== null}
               />
               <Input
                 label="Password"
@@ -239,7 +158,6 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
-                disabled={isDev && devRole !== null}
                 rightElement={
                   <button
                     type="button"

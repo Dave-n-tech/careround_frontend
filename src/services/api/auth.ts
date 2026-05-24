@@ -30,7 +30,11 @@ export const authApi = api.injectEndpoints({
       query: (body) => ({ url: "/auth/refresh", method: "POST", body }),
     }),
     logout: build.mutation<void, void>({
-      query: () => ({ url: "/auth/logout", method: "POST" }),
+      query: () => ({
+        url: "/auth/logout",
+        method: "POST",
+        body: { refreshToken: localStorage.getItem("cr_refresh_token") ?? "" },
+      }),
     }),
     changePassword: build.mutation<void, ChangePasswordRequest>({
       query: (body) => ({ url: "/auth/change-password", method: "POST", body }),

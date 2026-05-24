@@ -2,6 +2,7 @@ import { api } from "./baseApi";
 import type { Patient, AdmissionType, PatientGender } from "@/types/domain";
 
 export interface RegisterPatientRequest {
+  wardId?: string;
   firstName: string;
   lastName: string;
   dateOfBirth: string;
@@ -14,20 +15,26 @@ export interface RegisterPatientRequest {
   allergies?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
-  wardId: string;
-  bedNumber?: string;
   admissionType: AdmissionType;
-  admissionDate: string;
+  primaryDiagnosis?: string;
+  bedNumber?: string;
+  estimatedDischargeDate?: string;
 }
-
-export type UpdatePatientRequest = Partial<Omit<RegisterPatientRequest, "hospitalNumber">> & { id: string };
 
 export const patientsApi = api.injectEndpoints({
   endpoints: (build) => ({
-    getPatients: build.query<Patient[], { wardId?: string; status?: string }>({
-      query: (params) => ({
+    // GET /patients — returns all hospital patients, optionally filtered by status (ADMIN only)
+    getAllPatients: build.query<Patient[], { status?: "ADMITTED" | "DISCHARGED" } | void>({
+      query: (arg) => ({
         url: "/patients",
-        params,
+        params: arg && (arg as { status?: string }).status ? { status: (arg as { status?: string }).status } : undefined,
+      }),
+      providesTags: ["Patients"],
+    }),
+    // GET /patients/ward/{wardId} — returns admitted patients for a ward
+    getPatients: build.query<Patient[], { wardId?: string }>({
+      query: ({ wardId }) => ({
+        url: wardId ? `/patients/ward/${wardId}` : "/patients/ward/unknown",
       }),
       providesTags: ["Patients"],
     }),
@@ -39,12 +46,12 @@ export const patientsApi = api.injectEndpoints({
       query: (body) => ({ url: "/patients", method: "POST", body }),
       invalidatesTags: ["Patients"],
     }),
-    updatePatient: build.mutation<Patient, UpdatePatientRequest>({
-      query: ({ id, ...body }) => ({ url: `/patients/${id}`, method: "PUT", body }),
-      invalidatesTags: ["Patients"],
-    }),
-    assignBed: build.mutation<Patient, { id: string; wardId: string; bedNumber?: string }>({
-      query: ({ id, ...body }) => ({ url: `/patients/${id}/assign-bed`, method: "PUT", body }),
+    updatePatientStatus: build.mutation<Patient, { patientId: string; status: "ADMITTED" | "DISCHARGED" }>({
+      query: ({ patientId, status }) => ({
+        url: `/patients/${patientId}/status`,
+        method: "PATCH",
+        body: { status },
+      }),
       invalidatesTags: ["Patients"],
     }),
   }),
@@ -52,9 +59,9 @@ export const patientsApi = api.injectEndpoints({
 });
 
 export const {
+  useGetAllPatientsQuery,
   useGetPatientsQuery,
   useGetPatientQuery,
   useRegisterPatientMutation,
-  useUpdatePatientMutation,
-  useAssignBedMutation,
+  useUpdatePatientStatusMutation,
 } = patientsApi;

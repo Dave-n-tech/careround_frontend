@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useGetMedicationTasksQuery, useCompleteTaskMutation } from "@/services/api/prescriptions";
+import { useAppSelector } from "@/app/hooks";
 import { ConfirmModal } from "@/components/ui/modal";
 import { MOCK_TASKS } from "@/lib/mock-data";
 import type { MedicationTaskEnriched } from "@/services/api/prescriptions";
@@ -69,7 +70,7 @@ function TaskCard({ task, group }: { task: MedicationTaskEnriched; group: Group 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-sm text-[var(--cr-ink)]">
-              {task.patientName}
+              {task.patientFirstName} {task.patientLastName}
             </span>
             {task.bedNumber && (
               <span className="px-1.5 py-0.5 rounded text-xs bg-[var(--cr-surface-3)] text-[var(--cr-muted)]">
@@ -122,7 +123,7 @@ function TaskCard({ task, group }: { task: MedicationTaskEnriched; group: Group 
         title="Mark as administered?"
         body={
           <span>
-            <strong>{task.drugName} {task.dose}</strong> for <strong>{task.patientName}</strong>
+            <strong>{task.drugName} {task.dose}</strong> for <strong>{task.patientFirstName} {task.patientLastName}</strong>
             {task.bedNumber ? ` (Bed ${task.bedNumber})` : ""}
             <br />
             <span className="text-[var(--cr-muted)]">Scheduled: {fmtDate(task.scheduledTime)} at {fmtTime(task.scheduledTime)}</span>
@@ -181,14 +182,16 @@ function TaskSection({ group, tasks }: { group: Group; tasks: MedicationTaskEnri
 const GROUP_ORDER: Group[] = ["OVERDUE", "DUE_SOON", "UPCOMING", "COMPLETED"];
 
 export default function NurseTasks() {
-  const { data: tasksData } = useGetMedicationTasksQuery({});
-  const tasks = tasksData ?? MOCK_TASKS;
+  const wardId = useAppSelector((s) => s.auth.user?.wardId);
+  const { data: tasksData } = useGetMedicationTasksQuery({ wardId });
 
-  const grouped = GROUP_ORDER.reduce<Record<Group, MedicationTaskEnriched[]>>(
-    (acc, g) => { acc[g] = []; return acc; },
-    {} as Record<Group, MedicationTaskEnriched[]>
-  );
-  for (const t of tasks) grouped[groupTask(t)].push(t);
+  // API returns pre-grouped tasks; fall back to mock data grouped client-side
+  const grouped: Record<Group, MedicationTaskEnriched[]> = {
+    OVERDUE:   tasksData?.overdue   ?? MOCK_TASKS.filter((t) => groupTask(t) === "OVERDUE"),
+    DUE_SOON:  tasksData?.dueSoon   ?? MOCK_TASKS.filter((t) => groupTask(t) === "DUE_SOON"),
+    UPCOMING:  tasksData?.upcoming  ?? MOCK_TASKS.filter((t) => groupTask(t) === "UPCOMING"),
+    COMPLETED: tasksData ? [] : MOCK_TASKS.filter((t) => groupTask(t) === "COMPLETED"),
+  };
 
   const pendingCount = grouped.OVERDUE.length + grouped.DUE_SOON.length;
 
@@ -203,7 +206,7 @@ export default function NurseTasks() {
         </p>
       </div>
 
-      {tasks.length === 0 ? (
+      {GROUP_ORDER.every((g) => grouped[g].length === 0) ? (
         <div className="text-center py-16 text-[var(--cr-muted)] text-sm">
           No tasks assigned to you.
         </div>

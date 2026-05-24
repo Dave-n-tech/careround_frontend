@@ -1,9 +1,9 @@
-import type { Ward, User, Patient, SystemConfig } from "@/types/domain";
+﻿import type { Ward, User, Patient, SystemConfig } from "@/types/domain";
 import type { PatientVitalsEnriched } from "@/services/api/vitals";
 import type { ClinicalNoteEnriched } from "@/services/api/clinicalNotes";
 import type { PrescriptionEnriched, MedicationTaskEnriched } from "@/services/api/prescriptions";
 
-// ─── Wards ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Wards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const MOCK_WARDS: Ward[] = [
   {
@@ -38,7 +38,7 @@ export const MOCK_WARDS: Ward[] = [
   },
 ];
 
-// ─── Users ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const MOCK_USERS: User[] = [
   {
@@ -48,7 +48,7 @@ export const MOCK_USERS: User[] = [
     lastName: "Adeyemi",
     email: "jadeyemi@stmarys.ng",
     role: "DOCTOR",
-    isActive: true,
+    active: true,
     createdAt: "2025-01-15T09:00:00Z",
     updatedAt: "2025-01-15T09:00:00Z",
   },
@@ -59,7 +59,7 @@ export const MOCK_USERS: User[] = [
     lastName: "Hassan",
     email: "ahassan@stmarys.ng",
     role: "DOCTOR",
-    isActive: true,
+    active: true,
     createdAt: "2025-01-20T09:00:00Z",
     updatedAt: "2025-01-20T09:00:00Z",
   },
@@ -70,7 +70,7 @@ export const MOCK_USERS: User[] = [
     lastName: "Okafor",
     email: "sokafor@stmarys.ng",
     role: "NURSE",
-    isActive: true,
+    active: true,
     createdAt: "2025-02-01T09:00:00Z",
     updatedAt: "2025-02-01T09:00:00Z",
   },
@@ -81,7 +81,7 @@ export const MOCK_USERS: User[] = [
     lastName: "Eze",
     email: "ceze@stmarys.ng",
     role: "NURSE",
-    isActive: true,
+    active: true,
     createdAt: "2025-02-01T09:00:00Z",
     updatedAt: "2025-02-01T09:00:00Z",
   },
@@ -92,7 +92,7 @@ export const MOCK_USERS: User[] = [
     lastName: "Bello",
     email: "nbello@stmarys.ng",
     role: "NURSE",
-    isActive: false,
+    active: false,
     createdAt: "2025-02-10T09:00:00Z",
     updatedAt: "2025-04-15T09:00:00Z",
   },
@@ -103,13 +103,13 @@ export const MOCK_USERS: User[] = [
     lastName: "Fashola",
     email: "tfashola@stmarys.ng",
     role: "SUPERVISOR",
-    isActive: true,
+    active: true,
     createdAt: "2025-01-10T09:00:00Z",
     updatedAt: "2025-01-10T09:00:00Z",
   },
 ];
 
-// ─── Patients ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Patients â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const MOCK_PATIENTS: Patient[] = [
   {
@@ -165,7 +165,7 @@ export const MOCK_PATIENTS: Patient[] = [
     hospitalNumber: "STM-0003",
     admissionDate: "2026-05-19T10:00:00Z",
     admissionType: "TRANSFER",
-    primaryDiagnosis: "Post-operative monitoring — CABG",
+    primaryDiagnosis: "Post-operative monitoring â€” CABG",
     acuityColor: "AMBER",
     status: "ADMITTED",
     registeredById: "admin1",
@@ -185,7 +185,7 @@ export const MOCK_PATIENTS: Patient[] = [
     allergies: "Aspirin",
     admissionDate: "2026-05-16T08:00:00Z",
     admissionType: "EMERGENCY",
-    primaryDiagnosis: "Acute appendicitis — post-op day 2",
+    primaryDiagnosis: "Acute appendicitis â€” post-op day 2",
     acuityColor: "GREEN",
     status: "ADMITTED",
     registeredById: "admin1",
@@ -213,7 +213,7 @@ export const MOCK_PATIENTS: Patient[] = [
   },
 ];
 
-// ─── System config ────────────────────────────────────────────────────────────
+// â”€â”€â”€ System config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const MOCK_SYSTEM_CONFIG: SystemConfig = {
   id: "cfg1",
@@ -225,7 +225,7 @@ export const MOCK_SYSTEM_CONFIG: SystemConfig = {
   updatedAt: "2025-01-10T08:00:00Z",
 };
 
-// ─── Activity log (no dedicated API endpoint — derived from user actions) ─────
+// â”€â”€â”€ Activity log (no dedicated API endpoint â€” derived from user actions) â”€â”€â”€â”€â”€
 
 export interface ActivityEntry {
   id: string;
@@ -244,7 +244,7 @@ export const MOCK_ACTIVITY: ActivityEntry[] = [
   { id: "a6", name: "Chidi Eze", role: "Nurse", action: "Created", date: "2026-05-01T09:00:00Z" },
 ];
 
-// ─── Vitals ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Vitals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const MOCK_VITALS: Record<string, PatientVitalsEnriched[]> = {
   p1: [
@@ -313,7 +313,7 @@ export const MOCK_VITALS: Record<string, PatientVitalsEnriched[]> = {
   ],
 };
 
-// ─── Clinical notes ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Clinical notes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const MOCK_NOTES: Record<string, ClinicalNoteEnriched[]> = {
   p1: [
@@ -322,7 +322,7 @@ export const MOCK_NOTES: Record<string, ClinicalNoteEnriched[]> = {
       noteType: "ADMISSION_NOTE", isAiGenerated: false,
       content: JSON.stringify({
         subjective: "72-year-old male presenting with 3-day history of progressive shortness of breath, orthopnoea, and bilateral ankle swelling. Known hypertensive and diabetic, poor compliance with medications.",
-        objective: "BP 98/62, HR 105, RR 24, Temp 37.4°C, SpO₂ 94% on room air. JVP elevated at 4cm. Bibasal crackles. Pitting oedema to knees bilaterally. BNP elevated.",
+        objective: "BP 98/62, HR 105, RR 24, Temp 37.4Â°C, SpOâ‚‚ 94% on room air. JVP elevated at 4cm. Bibasal crackles. Pitting oedema to knees bilaterally. BNP elevated.",
         assessment: "Acute decompensated heart failure secondary to medication non-compliance and possible hypertensive crisis.",
         plan: "IV furosemide 40mg stat. Fluid restriction 1.5L/24h. Strict input/output monitoring. Cardiology review requested. Echo arranged for tomorrow. Restart ACE inhibitor once haemodynamically stable.",
       }),
@@ -335,9 +335,9 @@ export const MOCK_NOTES: Record<string, ClinicalNoteEnriched[]> = {
       noteType: "WARD_ROUND_NOTE", isAiGenerated: true,
       content: JSON.stringify({
         subjective: "Patient reports some improvement in breathlessness overnight. Still unable to lie flat. Ankle swelling unchanged. Good urine output since furosemide.",
-        objective: "BP 104/66, HR 98, RR 22, Temp 37.6°C, SpO₂ 95%. JVP still elevated. Bibasal crackles slightly reduced. Echo shows EF 30%, moderate MR.",
+        objective: "BP 104/66, HR 98, RR 22, Temp 37.6Â°C, SpOâ‚‚ 95%. JVP still elevated. Bibasal crackles slightly reduced. Echo shows EF 30%, moderate MR.",
         assessment: "Mild improvement in acute decompensation. Underlying severe LV dysfunction now confirmed on echo.",
-        plan: "Continue IV diuresis. Add spironolactone 25mg OD. Start low-dose bisoprolol once euvolaemic. Cardiology reviewed — patient listed for repeat echo in 6 weeks post-discharge. Physiotherapy referral.",
+        plan: "Continue IV diuresis. Add spironolactone 25mg OD. Start low-dose bisoprolol once euvolaemic. Cardiology reviewed â€” patient listed for repeat echo in 6 weeks post-discharge. Physiotherapy referral.",
       }),
       authorName: "Dr. James Adeyemi",
       authorRole: "Doctor",
@@ -350,9 +350,9 @@ export const MOCK_NOTES: Record<string, ClinicalNoteEnriched[]> = {
       noteType: "ADMISSION_NOTE", isAiGenerated: false,
       content: JSON.stringify({
         subjective: "38-year-old female with 5-day history of productive cough, fever, and right-sided pleuritic chest pain. Known asthmatic. No recent travel. No sick contacts.",
-        objective: "Temp 38.9°C, HR 94, BP 112/70, RR 24, SpO₂ 93%. Dull percussion and bronchial breathing at right base. CXR shows right lower lobe consolidation. WBC 14.2, CRP 186.",
-        assessment: "Moderate-severity community-acquired pneumonia. CURB-65 score 2 — inpatient treatment indicated.",
-        plan: "IV co-amoxiclav 1.2g TDS. PO azithromycin 500mg OD. Oxygen therapy to maintain SpO₂ ≥94%. Aggressive hydration. Monitor urine output. Review in 48h — step down to oral if improving.",
+        objective: "Temp 38.9Â°C, HR 94, BP 112/70, RR 24, SpOâ‚‚ 93%. Dull percussion and bronchial breathing at right base. CXR shows right lower lobe consolidation. WBC 14.2, CRP 186.",
+        assessment: "Moderate-severity community-acquired pneumonia. CURB-65 score 2 â€” inpatient treatment indicated.",
+        plan: "IV co-amoxiclav 1.2g TDS. PO azithromycin 500mg OD. Oxygen therapy to maintain SpOâ‚‚ â‰¥94%. Aggressive hydration. Monitor urine output. Review in 48h â€” step down to oral if improving.",
       }),
       authorName: "Dr. Amina Hassan",
       authorRole: "Doctor",
@@ -361,7 +361,7 @@ export const MOCK_NOTES: Record<string, ClinicalNoteEnriched[]> = {
     {
       id: "n2b", patientId: "p2", hospitalId: "h1", authorId: "u3",
       noteType: "NURSING_REPORT", isAiGenerated: false,
-      content: "Patient had a settled night. Spiked temp to 38.9 at 02:00 — paracetamol given, temp down to 38.1 by 04:00. Oxygen requirement increased briefly to 4L/min. Adequate fluid intake. Patient anxious about diagnosis, reassurance provided.",
+      content: "Patient had a settled night. Spiked temp to 38.9 at 02:00 â€” paracetamol given, temp down to 38.1 by 04:00. Oxygen requirement increased briefly to 4L/min. Adequate fluid intake. Patient anxious about diagnosis, reassurance provided.",
       authorName: "Sarah Okafor",
       authorRole: "Nurse",
       createdAt: "2026-05-19T06:30:00Z", updatedAt: "2026-05-19T06:30:00Z",
@@ -373,7 +373,7 @@ export const MOCK_NOTES: Record<string, ClinicalNoteEnriched[]> = {
       noteType: "WARD_ROUND_NOTE", isAiGenerated: true,
       content: JSON.stringify({
         subjective: "Patient comfortable, no chest pain. Good appetite. Mobilising to bathroom with minimal assistance. Sternal wound clean.",
-        objective: "HR 72, BP 124/78, RR 16, Temp 36.8°C, SpO₂ 97%. Sternotomy wound clean and dry. Heart sounds normal. Clear chest. Abdomen soft.",
+        objective: "HR 72, BP 124/78, RR 16, Temp 36.8Â°C, SpOâ‚‚ 97%. Sternotomy wound clean and dry. Heart sounds normal. Clear chest. Abdomen soft.",
         assessment: "Recovering well post-CABG day 1. Haemodynamically stable.",
         plan: "Continue aspirin 75mg and clopidogrel 75mg. Commence cardiac rehabilitation protocol. Physiotherapy twice daily for breathing exercises. Target discharge day 4-5 if continues to progress.",
       }),
@@ -389,7 +389,7 @@ export const MOCK_NOTES: Record<string, ClinicalNoteEnriched[]> = {
       content: JSON.stringify({
         subjective: "Patient in good spirits. Pain well controlled with regular analgesia. Tolerating oral fluids and light diet. No nausea.",
         objective: "Afebrile. HR 76, BP 118/76. Abdomen soft, wound site clean, drains removed this morning. Bowel sounds present.",
-        assessment: "Post-op day 2 appendicectomy — progressing well. No signs of infection.",
+        assessment: "Post-op day 2 appendicectomy â€” progressing well. No signs of infection.",
         plan: "Step down to oral paracetamol and ibuprofen PRN. Increase diet as tolerated. Encourage mobilisation. Anticipate discharge tomorrow if continues to improve.",
       }),
       authorName: "Dr. Amina Hassan",
@@ -399,13 +399,13 @@ export const MOCK_NOTES: Record<string, ClinicalNoteEnriched[]> = {
   ],
 };
 
-// ─── Prescriptions ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Prescriptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function done(scheduledTime: string, completedByName: string) {
-  return { scheduledTime, completedAt: scheduledTime, completedByName };
+function done(scheduledTime: string) {
+  return scheduledTime;
 }
 function pending(scheduledTime: string) {
-  return { scheduledTime };
+  return scheduledTime;
 }
 
 export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {
@@ -416,10 +416,10 @@ export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {
       frequencyHours: 12, totalDoses: 6,
       startTime: "2026-05-17T10:00:00Z",
       administrationTimes: [
-        done("2026-05-17T10:00:00Z", "Sarah Okafor"),
-        done("2026-05-17T22:00:00Z", "Chidi Eze"),
-        done("2026-05-18T10:00:00Z", "Sarah Okafor"),
-        done("2026-05-18T22:00:00Z", "Chidi Eze"),
+        done("2026-05-17T10:00:00Z"),
+        done("2026-05-17T22:00:00Z"),
+        done("2026-05-18T10:00:00Z"),
+        done("2026-05-18T22:00:00Z"),
         pending("2026-05-19T10:00:00Z"),
         pending("2026-05-19T22:00:00Z"),
       ],
@@ -434,9 +434,9 @@ export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {
       frequencyHours: 24, totalDoses: 7,
       startTime: "2026-05-17T08:00:00Z",
       administrationTimes: [
-        done("2026-05-17T08:00:00Z", "Sarah Okafor"),
-        done("2026-05-18T08:00:00Z", "Sarah Okafor"),
-        done("2026-05-19T08:00:00Z", "Chidi Eze"),
+        done("2026-05-17T08:00:00Z"),
+        done("2026-05-18T08:00:00Z"),
+        done("2026-05-19T08:00:00Z"),
         pending("2026-05-20T08:00:00Z"),
         pending("2026-05-21T08:00:00Z"),
         pending("2026-05-22T08:00:00Z"),
@@ -453,9 +453,9 @@ export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {
       frequencyHours: 6, totalDoses: 4,
       startTime: "2026-05-17T10:00:00Z",
       administrationTimes: [
-        done("2026-05-17T10:00:00Z", "Sarah Okafor"),
-        done("2026-05-17T16:00:00Z", "Chidi Eze"),
-        done("2026-05-17T22:00:00Z", "Sarah Okafor"),
+        done("2026-05-17T10:00:00Z"),
+        done("2026-05-17T16:00:00Z"),
+        done("2026-05-17T22:00:00Z"),
         pending("2026-05-18T04:00:00Z"),
       ],
       confirmedById: "u1", confirmedAt: "2026-05-17T09:45:00Z",
@@ -471,12 +471,12 @@ export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {
       frequencyHours: 8, totalDoses: 9,
       startTime: "2026-05-18T16:00:00Z",
       administrationTimes: [
-        done("2026-05-18T16:00:00Z", "Sarah Okafor"),
-        done("2026-05-19T00:00:00Z", "Chidi Eze"),
-        done("2026-05-19T08:00:00Z", "Sarah Okafor"),
-        done("2026-05-19T16:00:00Z", "Chidi Eze"),
-        done("2026-05-20T00:00:00Z", "Sarah Okafor"),
-        done("2026-05-20T08:00:00Z", "Chidi Eze"),
+        done("2026-05-18T16:00:00Z"),
+        done("2026-05-19T00:00:00Z"),
+        done("2026-05-19T08:00:00Z"),
+        done("2026-05-19T16:00:00Z"),
+        done("2026-05-20T00:00:00Z"),
+        done("2026-05-20T08:00:00Z"),
         pending("2026-05-20T16:00:00Z"),
         pending("2026-05-21T00:00:00Z"),
         pending("2026-05-21T08:00:00Z"),
@@ -492,8 +492,8 @@ export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {
       frequencyHours: 24, totalDoses: 5,
       startTime: "2026-05-18T18:00:00Z",
       administrationTimes: [
-        done("2026-05-18T18:00:00Z", "Sarah Okafor"),
-        done("2026-05-19T18:00:00Z", "Sarah Okafor"),
+        done("2026-05-18T18:00:00Z"),
+        done("2026-05-19T18:00:00Z"),
         pending("2026-05-20T18:00:00Z"),
         pending("2026-05-21T18:00:00Z"),
         pending("2026-05-22T18:00:00Z"),
@@ -514,7 +514,7 @@ export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {
         const d = new Date("2026-05-10T08:00:00Z");
         d.setDate(d.getDate() + i);
         const iso = d.toISOString();
-        return i < 10 ? done(iso, i % 2 === 0 ? "Sarah Okafor" : "Chidi Eze") : pending(iso);
+        return i < 10 ? done(iso) : pending(iso);
       }),
       confirmedById: "u1", confirmedAt: "2026-05-10T10:15:00Z",
       status: "ACTIVE",
@@ -530,7 +530,7 @@ export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {
         const d = new Date("2026-05-10T08:00:00Z");
         d.setDate(d.getDate() + i);
         const iso = d.toISOString();
-        return i < 10 ? done(iso, i % 2 === 0 ? "Chidi Eze" : "Sarah Okafor") : pending(iso);
+        return i < 10 ? done(iso) : pending(iso);
       }),
       confirmedById: "u1", confirmedAt: "2026-05-10T10:15:00Z",
       status: "ACTIVE",
@@ -545,10 +545,10 @@ export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {
       frequencyHours: 6, totalDoses: 12,
       startTime: "2026-05-19T10:00:00Z",
       administrationTimes: [
-        done("2026-05-19T10:00:00Z", "Chidi Eze"),
-        done("2026-05-19T16:00:00Z", "Sarah Okafor"),
-        done("2026-05-19T22:00:00Z", "Chidi Eze"),
-        done("2026-05-20T04:00:00Z", "Sarah Okafor"),
+        done("2026-05-19T10:00:00Z"),
+        done("2026-05-19T16:00:00Z"),
+        done("2026-05-19T22:00:00Z"),
+        done("2026-05-20T04:00:00Z"),
         pending("2026-05-20T10:00:00Z"),
         pending("2026-05-20T16:00:00Z"),
         pending("2026-05-20T22:00:00Z"),
@@ -566,14 +566,14 @@ export const MOCK_PRESCRIPTIONS: Record<string, PrescriptionEnriched[]> = {
   ],
 };
 
-// ─── Medication tasks ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Medication tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const MOCK_TASKS: MedicationTaskEnriched[] = [
   {
     id: "t1", medicationChartId: "mc1", patientId: "p1", hospitalId: "h1", wardId: "w1",
     assignedNurseId: "u3", scheduledTime: "2026-05-20T10:00:00Z",
     status: "OVERDUE", minutesOverdue: 22,
-    patientName: "Emmanuel Okafor", bedNumber: "4",
+    patientFirstName: "Emmanuel", patientLastName: "Okafor", bedNumber: "4",
     drugName: "Furosemide", dose: "40mg", route: "IV",
     createdAt: "2026-05-17T09:45:00Z", updatedAt: "2026-05-20T10:22:00Z",
   },
@@ -581,7 +581,7 @@ export const MOCK_TASKS: MedicationTaskEnriched[] = [
     id: "t2", medicationChartId: "mc2", patientId: "p2", hospitalId: "h1", wardId: "w1",
     assignedNurseId: "u3", scheduledTime: "2026-05-20T10:30:00Z",
     status: "PENDING", minutesOverdue: undefined,
-    patientName: "Fatima Abubakar", bedNumber: "7",
+    patientFirstName: "Fatima", patientLastName: "Abubakar", bedNumber: "7",
     drugName: "Co-amoxiclav", dose: "1.2g", route: "IV",
     createdAt: "2026-05-18T15:45:00Z", updatedAt: "2026-05-18T15:45:00Z",
   },
@@ -589,7 +589,7 @@ export const MOCK_TASKS: MedicationTaskEnriched[] = [
     id: "t3", medicationChartId: "mc3", patientId: "p4", hospitalId: "h1", wardId: "w1",
     assignedNurseId: "u3", scheduledTime: "2026-05-20T12:00:00Z",
     status: "PENDING",
-    patientName: "Adaeze Nwosu", bedNumber: "11",
+    patientFirstName: "Adaeze", patientLastName: "Nwosu", bedNumber: "11",
     drugName: "Paracetamol", dose: "1g", route: "Oral",
     createdAt: "2026-05-16T09:30:00Z", updatedAt: "2026-05-16T09:30:00Z",
   },
@@ -597,7 +597,7 @@ export const MOCK_TASKS: MedicationTaskEnriched[] = [
     id: "t4", medicationChartId: "mc2b", patientId: "p2", hospitalId: "h1", wardId: "w1",
     assignedNurseId: "u4", scheduledTime: "2026-05-20T14:00:00Z",
     status: "PENDING",
-    patientName: "Fatima Abubakar", bedNumber: "7",
+    patientFirstName: "Fatima", patientLastName: "Abubakar", bedNumber: "7",
     drugName: "Azithromycin", dose: "500mg", route: "Oral",
     createdAt: "2026-05-18T15:45:00Z", updatedAt: "2026-05-18T15:45:00Z",
   },
@@ -606,7 +606,7 @@ export const MOCK_TASKS: MedicationTaskEnriched[] = [
     assignedNurseId: "u3", scheduledTime: "2026-05-19T22:00:00Z",
     status: "COMPLETED", completedAt: "2026-05-19T21:55:00Z",
     completedById: "u3", completedByName: "Sarah Okafor", actualDoseGiven: "40mg",
-    patientName: "Emmanuel Okafor", bedNumber: "4",
+    patientFirstName: "Emmanuel", patientLastName: "Okafor", bedNumber: "4",
     drugName: "Furosemide", dose: "40mg", route: "IV",
     createdAt: "2026-05-17T09:45:00Z", updatedAt: "2026-05-19T21:55:00Z",
   },
@@ -615,7 +615,7 @@ export const MOCK_TASKS: MedicationTaskEnriched[] = [
     assignedNurseId: "u4", scheduledTime: "2026-05-20T08:00:00Z",
     status: "COMPLETED", completedAt: "2026-05-20T08:05:00Z",
     completedById: "u4", completedByName: "Chidi Eze", actualDoseGiven: "75mg",
-    patientName: "Babatunde Lawson", bedNumber: "2",
+    patientFirstName: "Babatunde", patientLastName: "Lawson", bedNumber: "2",
     drugName: "Aspirin", dose: "75mg", route: "Oral",
     createdAt: "2026-05-19T10:15:00Z", updatedAt: "2026-05-20T08:05:00Z",
   },

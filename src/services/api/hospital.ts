@@ -14,11 +14,11 @@ export const hospitalApi = api.injectEndpoints({
       providesTags: ["Hospital"],
     }),
     getSystemConfig: build.query<SystemConfig, void>({
-      query: () => "/hospitals/me/config",
+      query: () => "/system-config",
       providesTags: ["SystemConfig"],
     }),
     updateSystemConfig: build.mutation<SystemConfig, UpdateSystemConfigRequest>({
-      query: (body) => ({ url: "/hospitals/me/config", method: "PUT", body }),
+      query: (body) => ({ url: "/system-config", method: "PUT", body }),
       invalidatesTags: ["SystemConfig"],
     }),
   }),

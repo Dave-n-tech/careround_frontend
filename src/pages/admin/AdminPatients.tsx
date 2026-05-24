@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
-import { Plus, Eye, Pencil } from "lucide-react";
+import { Plus, Eye } from "lucide-react";
 import {
-  useGetPatientsQuery,
+  useGetAllPatientsQuery,
   useRegisterPatientMutation,
-  useUpdatePatientMutation,
+  useUpdatePatientStatusMutation,
 } from "@/services/api/patients";
 import { useGetWardsQuery } from "@/services/api/wards";
 import { MOCK_PATIENTS, MOCK_WARDS } from "@/lib/mock-data";
@@ -304,10 +304,10 @@ interface PatientViewModalProps {
   patient: Patient;
   wardName: string;
   onClose: () => void;
-  onEdit: () => void;
+  onDischarge: () => void;
 }
 
-function PatientViewModal({ open, patient: p, wardName, onClose, onEdit }: PatientViewModalProps) {
+function PatientViewModal({ open, patient: p, wardName, onClose, onDischarge }: PatientViewModalProps) {
   const admissionTypeLabel: Record<string, string> = {
     EMERGENCY: "Emergency",
     ELECTIVE: "Elective",
@@ -367,10 +367,11 @@ function PatientViewModal({ open, patient: p, wardName, onClose, onEdit }: Patie
             <Button type="button" variant="outline" onClick={onClose}>
               Close
             </Button>
-            <Button type="button" variant="primary" onClick={onEdit}>
-              <Pencil size={13} />
-              Edit
-            </Button>
+            {p.status === "ADMITTED" && (
+              <Button type="button" variant="outline-destructive" onClick={onDischarge}>
+                Discharge
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -381,17 +382,16 @@ function PatientViewModal({ open, patient: p, wardName, onClose, onEdit }: Patie
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AdminPatients() {
-  const { data: patientsData } = useGetPatientsQuery({});
+  const { data: patientsData } = useGetAllPatientsQuery();
   const { data: wardsData } = useGetWardsQuery();
   const [registerPatient] = useRegisterPatientMutation();
-  const [updatePatient] = useUpdatePatientMutation();
+  const [updatePatientStatus] = useUpdatePatientStatusMutation();
 
   const patients = patientsData ?? MOCK_PATIENTS;
   const wards = wardsData ?? MOCK_WARDS;
 
   const [registerOpen, setRegisterOpen] = useState(false);
   const [viewTarget, setViewTarget] = useState<Patient | null>(null);
-  const [editTarget, setEditTarget] = useState<Patient | null>(null);
   const [search, setSearch] = useState("");
   const [wardFilter, setWardFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -428,30 +428,12 @@ export default function AdminPatients() {
       wardId: form.wardId,
       bedNumber: form.bedNumber || undefined,
       admissionType: form.admissionType as AdmissionType,
-      admissionDate: new Date(form.admissionDate).toISOString(),
     }).unwrap();
   }
 
-  async function handleEdit(form: PatientForm) {
-    if (!editTarget) return;
-    await updatePatient({
-      id: editTarget.id,
-      firstName: form.firstName,
-      lastName: form.lastName,
-      dateOfBirth: form.dateOfBirth,
-      gender: form.gender as PatientGender,
-      phoneNumber: form.phoneNumber || undefined,
-      address: form.address || undefined,
-      previousConditions: form.previousConditions || undefined,
-      currentMedications: form.currentMedications || undefined,
-      allergies: form.allergies || undefined,
-      emergencyContactName: form.emergencyContactName || undefined,
-      emergencyContactPhone: form.emergencyContactPhone || undefined,
-      wardId: form.wardId,
-      bedNumber: form.bedNumber || undefined,
-      admissionType: form.admissionType as AdmissionType,
-      admissionDate: new Date(form.admissionDate).toISOString(),
-    }).unwrap();
+  async function handleDischarge(patientId: string) {
+    await updatePatientStatus({ patientId, status: "DISCHARGED" }).unwrap();
+    setViewTarget(null);
   }
 
   const wardOptions = [{ value: "", label: "All Wards" }, ...wards.map((w) => ({ value: w.id, label: w.name }))];
@@ -546,23 +528,14 @@ export default function AdminPatients() {
                     </td>
                     <td className="text-[var(--cr-muted)] text-xs">{formatDate(patient.createdAt)}</td>
                     <td>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          title="View"
-                          onClick={() => setViewTarget(patient)}
-                        >
-                          <Eye size={13} />
-                        </Button>
-                        <button
-                          title="Edit"
-                          onClick={() => setEditTarget(patient)}
-                          className="text-xs font-medium text-[var(--cr-muted)] hover:text-[var(--cr-accent)] transition-colors"
-                        >
-                          Edit
-                        </button>
-                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="View"
+                        onClick={() => setViewTarget(patient)}
+                      >
+                        <Eye size={13} />
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -587,21 +560,7 @@ export default function AdminPatients() {
           patient={viewTarget}
           wardName={wardMap[viewTarget.wardId] ?? "—"}
           onClose={() => setViewTarget(null)}
-          onEdit={() => {
-            setEditTarget(viewTarget);
-            setViewTarget(null);
-          }}
-        />
-      )}
-
-      {/* Edit modal */}
-      {editTarget && (
-        <PatientFormModal
-          open={!!editTarget}
-          onClose={() => setEditTarget(null)}
-          wards={wards.filter((w) => w.isActive)}
-          existing={editTarget}
-          onSave={handleEdit}
+          onDischarge={() => handleDischarge(viewTarget.id)}
         />
       )}
     </div>

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { LogOut, Check } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { clearAuth, patchUser } from "@/features/auth/authSlice";
-import { useUpdateUserMutation, useLogoutMutation, useChangePasswordMutation } from "@/services/api";
+import { useLogoutMutation, useChangePasswordMutation, useUpdateMeMutation } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Role } from "@/types/domain";
@@ -59,7 +59,7 @@ function SectionCard({ title, children }: { title: string; children: React.React
 function PersonalDetails() {
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
-  const [updateUser] = useUpdateUserMutation();
+  const [updateMe] = useUpdateMeMutation();
 
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "" });
@@ -80,7 +80,7 @@ function PersonalDetails() {
     if (!user) return;
     setSaveState("saving");
     try {
-      await updateUser({ id: user.id, ...form }).unwrap();
+      await updateMe(form).unwrap();
       dispatch(patchUser(form));
       setEditing(false);
       saved();

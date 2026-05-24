@@ -197,7 +197,7 @@ export default function AdminUsers() {
     if (!deactivateTarget) return;
     setActioning(true);
     try {
-      if (deactivateTarget.isActive) {
+      if (deactivateTarget.active) {
         await deactivateUser(deactivateTarget.id).unwrap();
       } else {
         await reactivateUser(deactivateTarget.id).unwrap();
@@ -219,7 +219,7 @@ export default function AdminUsers() {
     <div className="p-4 sm:p-8 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--cr-ink)]">Users</h1>
+          <h1 className="text-2xl font-bold text-[var(--cr-ink)]">Medical Staff</h1>
           <p className="text-sm text-[var(--cr-muted)] mt-0.5">{allUsers.filter(u => u.role !== "ADMIN").length} staff accounts</p>
         </div>
         <Button variant="primary" size="md" onClick={() => setAddOpen(true)}>
@@ -272,12 +272,12 @@ export default function AdminUsers() {
                     <td>
                       <span
                         className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold uppercase ${
-                          user.isActive
+                          user.active
                             ? "bg-green-100 text-green-700"
                             : "bg-slate-100 text-slate-500"
                         }`}
                       >
-                        {user.isActive ? "Active" : "Inactive"}
+                        {user.active ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td className="text-[var(--cr-muted)] text-xs">{formatDate(user.createdAt)}</td>
@@ -294,12 +294,12 @@ export default function AdminUsers() {
                         <button
                           onClick={() => setDeactivateTarget(user)}
                           className={`text-xs font-medium transition-colors ${
-                            user.isActive
+                            user.active
                               ? "text-[var(--cr-muted)] hover:text-[var(--cr-danger)]"
                               : "text-[var(--cr-muted)] hover:text-[var(--cr-accent)]"
                           }`}
                         >
-                          {user.isActive ? "Deactivate" : "Reactivate"}
+                          {user.active ? "Deactivate" : "Reactivate"}
                         </button>
                       </div>
                     </td>
@@ -326,14 +326,14 @@ export default function AdminUsers() {
         open={!!deactivateTarget}
         onClose={() => setDeactivateTarget(null)}
         onConfirm={handleDeactivate}
-        title={deactivateTarget?.isActive ? "Deactivate User?" : "Reactivate User?"}
+        title={deactivateTarget?.active ? "Deactivate User?" : "Reactivate User?"}
         body={
-          deactivateTarget?.isActive
+          deactivateTarget?.active
             ? `${deactivateTarget.firstName} ${deactivateTarget.lastName} will no longer be able to log in.`
             : `${deactivateTarget?.firstName} ${deactivateTarget?.lastName} will be able to log in again.`
         }
-        confirmLabel={deactivateTarget?.isActive ? "Deactivate" : "Reactivate"}
-        variant={deactivateTarget?.isActive ? "destructive" : "primary"}
+        confirmLabel={deactivateTarget?.active ? "Deactivate" : "Reactivate"}
+        variant={deactivateTarget?.active ? "destructive" : "primary"}
         loading={actioning}
       />
     </div>

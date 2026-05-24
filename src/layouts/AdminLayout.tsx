@@ -19,7 +19,7 @@ const navItems = [
   { to: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/patients", label: "Patients", icon: UserSquare2 },
   { to: "/admin/wards", label: "Wards", icon: Building2 },
-  { to: "/admin/users", label: "Users", icon: Users },
+  { to: "/admin/users", label: "Staff", icon: Users },
   { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
 

@@ -1,4 +1,5 @@
-import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import { createSlice } from "@reduxjs/toolkit";
+import type { PayloadAction } from "@reduxjs/toolkit";
 import type { Role, User } from "@/types/domain";
 import { authApi } from "@/services/api/auth";
 
@@ -54,17 +55,6 @@ const authSlice = createSlice({
       state.user = { ...state.user, ...action.payload };
       localStorage.setItem("cr_user", JSON.stringify(state.user));
     },
-    // Used by the dev mock login to set auth state directly
-    setMockAuth(state, action: PayloadAction<{ user: User; role: Role; token: string }>) {
-      state.user = action.payload.user;
-      state.role = action.payload.role;
-      state.accessToken = action.payload.token;
-      state.status = "authenticated";
-      state.error = null;
-      localStorage.setItem("cr_access_token", action.payload.token);
-      localStorage.setItem("cr_role", action.payload.role);
-      localStorage.setItem("cr_user", JSON.stringify(action.payload.user));
-    },
   },
   extraReducers: (builder) => {
     builder.addMatcher(authApi.endpoints.login.matchPending, (state) => {
@@ -77,6 +67,7 @@ const authSlice = createSlice({
       state.role = payload.role;
       state.status = "loading"; // stays loading until getMe fills user
       localStorage.setItem("cr_access_token", payload.accessToken);
+      localStorage.setItem("cr_refresh_token", payload.refreshToken);
       localStorage.setItem("cr_role", payload.role);
     });
 
@@ -115,5 +106,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearAuth, setMockAuth, patchUser } = authSlice.actions;
+export const { clearAuth, patchUser } = authSlice.actions;
 export default authSlice.reducer;
