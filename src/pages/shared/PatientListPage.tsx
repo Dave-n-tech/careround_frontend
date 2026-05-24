@@ -98,7 +98,10 @@ export default function PatientListPage() {
   const wardId = useAppSelector((s) => s.auth.user?.wardId);
   const prefix = (role && ROLE_PREFIX[role]) ?? "/nurse";
 
-  const { data: patientsData } = useGetPatientsQuery({ wardId });
+  const { data: patientsData } = useGetPatientsQuery(
+    { wardId: wardId! },
+    { skip: !wardId },
+  );
   const allPatients = (patientsData ?? []).filter((p) => p.status === "ADMITTED");
 
   const [acuityFilter, setAcuityFilter] = useState<AcuityFilter>("ALL");

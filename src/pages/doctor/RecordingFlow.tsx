@@ -4,7 +4,8 @@ import { useAppSelector } from "@/app/hooks";
 
 // ─── AI voice note API call ───────────────────────────────────────────────────
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
+const apiBaseUrl =
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
 async function processVoiceNote(
   audioBlob: Blob,
@@ -13,16 +14,16 @@ async function processVoiceNote(
   onTranscriptionComplete: () => void,
 ): Promise<AiProcessingResult | null> {
   const token = localStorage.getItem("cr_access_token");
-  const ext = audioBlob.type.includes("ogg") ? "ogg"
-    : audioBlob.type.includes("mp4") || audioBlob.type.includes("m4a") ? "m4a"
-    : audioBlob.type.includes("wav") ? "wav"
-    : "webm";
   if (audioBlob.size === 0) return null;
-  const formData = new FormData();
-  formData.append("audio", audioBlob, `recording.${ext}`);
+  console.log("[audio] blobSize:", audioBlob.size, "blobType:", audioBlob.type);
   const mode = isNurse ? "transcription_only" : "ward_round";
+  const formData = new FormData();
+  formData.append("audio", audioBlob, "recording.webm");
+  formData.append("patient_id", patientId);
+  formData.append("current_time", new Date().toISOString());
+  formData.append("mode", mode);
   try {
-    const res = await fetch(`${apiBaseUrl}/ai/process-voice-note?patientId=${encodeURIComponent(patientId)}&mode=${mode}`, {
+    const res = await fetch(`${apiBaseUrl}/ai/process-voice-note`, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
@@ -32,6 +33,8 @@ async function processVoiceNote(
     const decoder = new TextDecoder();
     let buffer = "";
     let pendingEvent = "";
+    let pendingData = "";
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -41,24 +44,31 @@ async function processVoiceNote(
       for (const line of lines) {
         if (line.startsWith("event:")) {
           pendingEvent = line.slice(6).trim();
-          continue;
-        }
-        if (!line.startsWith("data:")) continue;
-        const raw = line.slice(5).trim();
-        if (!raw || raw === "[DONE]") { pendingEvent = ""; continue; }
-        if (pendingEvent === "transcription_complete") {
-          onTranscriptionComplete();
-          pendingEvent = "";
-          continue;
-        }
-        try {
-          const parsed = JSON.parse(raw);
-          const payload = parsed?.data ?? parsed;
-          if (payload?.rawTranscription !== undefined && payload?.clinicalNote !== undefined) {
-            return payload as AiProcessingResult;
+        } else if (line.startsWith("data:")) {
+          pendingData = line.slice(5).trim();
+        } else if (line === "") {
+          // blank line = event boundary, dispatch
+          if (pendingEvent === "transcription_complete") {
+            onTranscriptionComplete();
+          } else if (pendingEvent === "processing_complete" && pendingData) {
+            try {
+              const parsed = JSON.parse(pendingData);
+              if (
+                parsed?.rawTranscription !== undefined &&
+                parsed?.clinicalNote !== undefined
+              ) {
+                console.log("[sse] processing_complete payload:", JSON.stringify(parsed, null, 2));
+                return parsed as AiProcessingResult;
+              }
+            } catch {
+              /* malformed */
+            }
+          } else if (pendingEvent === "error") {
+            return null;
           }
-        } catch { /* non-JSON line */ }
-        pendingEvent = "";
+          pendingEvent = "";
+          pendingData = "";
+        }
       }
     }
     return null;
@@ -66,14 +76,33 @@ async function processVoiceNote(
     return null;
   }
 }
-import { Pause, Play, Square, Plus, Trash2, ChevronDown, ChevronRight, Pencil, MicOff } from "lucide-react";
+import {
+  Pause,
+  Play,
+  Square,
+  Plus,
+  Trash2,
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  MicOff,
+} from "lucide-react";
 import { useGetPatientQuery } from "@/services/api/patients";
-import { useAddNoteMutation, useConfirmNoteMutation } from "@/services/api/clinicalNotes";
-import type { AiProcessingResult, AiPrescription, NoteType, SoapContent } from "@/types/domain";
+import {
+  useAddNoteMutation,
+  useConfirmNoteMutation,
+} from "@/services/api/clinicalNotes";
+import type {
+  AiProcessingResult,
+  AiPrescription,
+  NoteType,
+  SoapContent,
+} from "@/types/domain";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { toast } from "@/components/ui/toast";
 
 const BLANK_AI_RESULT: AiProcessingResult = {
   rawTranscription: "",
@@ -84,7 +113,9 @@ const BLANK_AI_RESULT: AiProcessingResult = {
 // ─── Screen 1 — Recording ─────────────────────────────────────────────────────
 
 function fmtTimer(s: number) {
-  const m = Math.floor(s / 60).toString().padStart(2, "0");
+  const m = Math.floor(s / 60)
+    .toString()
+    .padStart(2, "0");
   const sec = (s % 60).toString().padStart(2, "0");
   return `${m}:${sec}`;
 }
@@ -99,7 +130,9 @@ function Waveform({ active }: { active: boolean }) {
           className="w-1 rounded-full bg-[var(--cr-accent)]"
           style={{
             height: active ? `${20 + Math.random() * 44}%` : "10%",
-            animation: active ? `wave ${0.6 + (i % 5) * 0.12}s ease-in-out infinite alternate` : "none",
+            animation: active
+              ? `wave ${0.6 + (i % 5) * 0.12}s ease-in-out infinite alternate`
+              : "none",
             transition: "height 0.1s",
           }}
         />
@@ -121,7 +154,12 @@ interface Screen1Props {
   onCancel: () => void;
 }
 
-function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Props) {
+function RecordingScreen({
+  patientName,
+  bedNumber,
+  onStop,
+  onCancel,
+}: Screen1Props) {
   const [seconds, setSeconds] = useState(0);
   const [paused, setPaused] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -131,19 +169,22 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : MediaRecorder.isTypeSupported("audio/mp4")
-        ? "audio/mp4"
-        : "";
-      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {});
-      mediaRef.current = mr;
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.start(100);
-    }).catch(() => {
-      setMicError(true);
-    });
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "audio/webm";
+        const mr = new MediaRecorder(stream, { mimeType });
+        mediaRef.current = mr;
+        mr.ondataavailable = (e) => {
+          if (e.data.size > 0) chunksRef.current.push(e.data);
+        };
+        mr.start(100);
+      })
+      .catch(() => {
+        setMicError(true);
+      });
 
     timerRef.current = setInterval(() => {
       setPaused((p) => {
@@ -159,7 +200,10 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
   }, []);
 
   function togglePause() {
-    if (!mediaRef.current) { setPaused((p) => !p); return; }
+    if (!mediaRef.current) {
+      setPaused((p) => !p);
+      return;
+    }
     if (paused) {
       mediaRef.current.resume();
       setPaused(false);
@@ -174,8 +218,14 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
     const mr = mediaRef.current;
     if (mr && mr.state !== "inactive") {
       mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
-        if (blob.size === 0) { setMicError(true); return; }
+        console.log("[audio] chunkCount:", chunksRef.current.length);
+        const blob = new Blob(chunksRef.current, {
+          type: mr.mimeType || "audio/webm;codecs=opus",
+        });
+        if (blob.size === 0) {
+          setMicError(true);
+          return;
+        }
         onStop(blob);
       };
       mr.stop();
@@ -212,7 +262,9 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
       <div className="flex items-center justify-between mb-auto">
         <div>
           <p className="text-sm font-semibold">{patientName}</p>
-          {bedNumber && <p className="text-xs text-gray-400">Bed {bedNumber}</p>}
+          {bedNumber && (
+            <p className="text-xs text-gray-400">Bed {bedNumber}</p>
+          )}
         </div>
         <button
           className="text-sm text-gray-400 hover:text-white transition-colors"
@@ -227,8 +279,14 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
         <div className="w-full max-w-xs">
           <Waveform active={!paused} />
         </div>
-        <p className="text-4xl font-mono tabular-nums text-white">{fmtTimer(seconds)}</p>
-        {paused && <p className="text-xs text-gray-400 tracking-widest uppercase">Paused</p>}
+        <p className="text-4xl font-mono tabular-nums text-white">
+          {fmtTimer(seconds)}
+        </p>
+        {paused && (
+          <p className="text-xs text-gray-400 tracking-widest uppercase">
+            Paused
+          </p>
+        )}
       </div>
 
       {/* Controls */}
@@ -253,7 +311,9 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-xs w-full text-center mx-4">
             <p className="font-semibold mb-2">Discard recording?</p>
-            <p className="text-sm text-gray-400 mb-5">The recording will be lost.</p>
+            <p className="text-sm text-gray-400 mb-5">
+              The recording will be lost.
+            </p>
             <div className="flex gap-3">
               <button
                 className="flex-1 py-2 rounded-lg border border-gray-600 text-sm hover:border-gray-400"
@@ -286,8 +346,19 @@ interface Screen2Props {
   onDone: (result: AiProcessingResult) => void;
 }
 
-function ProcessingScreen({ patientName, bedNumber, isNurse, patientId, audioBlob, onDone }: Screen2Props) {
-  const doctorSteps = ["Transcribing", "Structuring note", "Extracting prescriptions"];
+function ProcessingScreen({
+  patientName,
+  bedNumber,
+  isNurse,
+  patientId,
+  audioBlob,
+  onDone,
+}: Screen2Props) {
+  const doctorSteps = [
+    "Transcribing",
+    "Structuring note",
+    "Extracting prescriptions",
+  ];
   const nurseSteps = ["Transcribing your note"];
   const stepLabels = isNurse ? nurseSteps : doctorSteps;
 
@@ -312,25 +383,37 @@ function ProcessingScreen({ patientName, bedNumber, isNurse, patientId, audioBlo
         delay += 400;
         timeouts.push(setTimeout(() => advance(s), delay));
       }
-      timeouts.push(setTimeout(() => { if (!cancelled) onDone(result); }, delay + 200));
+      timeouts.push(
+        setTimeout(() => {
+          if (!cancelled) onDone(result);
+        }, delay + 200),
+      );
     }
 
     processVoiceNote(audioBlob, patientId, isNurse, () => {
       // transcription_complete — "Transcribing" step is done
       advance(1);
     }).then((result) => {
+      console.log("[processing] result received by ProcessingScreen:", result);
       if (!cancelled) finishRemaining(result ?? BLANK_AI_RESULT);
     });
 
-    return () => { cancelled = true; timeouts.forEach(clearTimeout); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+      timeouts.forEach(clearTimeout);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div className="min-h-screen bg-white flex flex-col px-6 py-6">
       <div className="mb-auto">
-        <p className="text-sm font-semibold text-[var(--cr-ink)]">{patientName}</p>
-        {bedNumber && <p className="text-xs text-[var(--cr-muted)]">Bed {bedNumber}</p>}
+        <p className="text-sm font-semibold text-[var(--cr-ink)]">
+          {patientName}
+        </p>
+        {bedNumber && (
+          <p className="text-xs text-[var(--cr-muted)]">Bed {bedNumber}</p>
+        )}
       </div>
 
       <div className="flex flex-col items-center justify-center flex-1 gap-8">
@@ -347,19 +430,27 @@ function ProcessingScreen({ patientName, bedNumber, isNurse, patientId, audioBlo
                       done
                         ? "bg-[var(--cr-accent)] border-[var(--cr-accent)]"
                         : active
-                        ? "border-[var(--cr-accent)] animate-pulse"
-                        : "border-[var(--cr-line)]"
+                          ? "border-[var(--cr-accent)] animate-pulse"
+                          : "border-[var(--cr-line)]"
                     }`}
                   >
                     {done && <span className="text-white text-sm">✓</span>}
-                    {!done && <span className={`w-2.5 h-2.5 rounded-full ${active ? "bg-[var(--cr-accent)]" : "bg-[var(--cr-line)]"}`} />}
+                    {!done && (
+                      <span
+                        className={`w-2.5 h-2.5 rounded-full ${active ? "bg-[var(--cr-accent)]" : "bg-[var(--cr-line)]"}`}
+                      />
+                    )}
                   </div>
-                  <p className={`text-xs text-center max-w-20 ${active ? "text-[var(--cr-accent)] font-medium" : done ? "text-[var(--cr-muted)]" : "text-[var(--cr-muted)]"}`}>
+                  <p
+                    className={`text-xs text-center max-w-20 ${active ? "text-[var(--cr-accent)] font-medium" : done ? "text-[var(--cr-muted)]" : "text-[var(--cr-muted)]"}`}
+                  >
                     {label}
                   </p>
                 </div>
                 {i < stepLabels.length - 1 && (
-                  <div className={`w-8 h-0.5 mb-5 transition-colors duration-500 ${done ? "bg-[var(--cr-accent)]" : "bg-[var(--cr-line)]"}`} />
+                  <div
+                    className={`w-8 h-0.5 mb-5 transition-colors duration-500 ${done ? "bg-[var(--cr-accent)]" : "bg-[var(--cr-line)]"}`}
+                  />
                 )}
               </div>
             );
@@ -367,7 +458,8 @@ function ProcessingScreen({ patientName, bedNumber, isNurse, patientId, audioBlo
         </div>
 
         <p className="text-sm text-[var(--cr-muted)] text-center max-w-xs">
-          Processing your consultation — longer recordings may take up to 30 seconds.
+          Processing your consultation — longer recordings may take up to 30
+          seconds.
         </p>
       </div>
     </div>
@@ -389,7 +481,13 @@ interface NurseScreen3Props {
   onSaved: () => void;
 }
 
-function NurseReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: NurseScreen3Props) {
+function NurseReviewScreen({
+  patientName,
+  bedNumber,
+  result,
+  patientId,
+  onSaved,
+}: NurseScreen3Props) {
   const [addNote] = useAddNoteMutation();
   const [noteType, setNoteType] = useState<NoteType>("HANDOVER_NOTE");
   const [content, setContent] = useState(result.rawTranscription);
@@ -399,7 +497,13 @@ function NurseReviewScreen({ patientName, bedNumber, result, patientId, onSaved 
     if (!content.trim()) return;
     setSaving(true);
     try {
-      await addNote({ patientId, noteType, content, isAiGenerated: true, rawTranscription: result.rawTranscription }).unwrap();
+      await addNote({
+        patientId,
+        noteType,
+        content,
+        isAiGenerated: true,
+        rawTranscription: result.rawTranscription,
+      }).unwrap();
       onSaved();
     } finally {
       setSaving(false);
@@ -409,13 +513,19 @@ function NurseReviewScreen({ patientName, bedNumber, result, patientId, onSaved 
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <div className="sticky top-0 bg-white border-b border-[var(--cr-line)] px-6 py-3 z-10">
-        <p className="text-sm font-semibold text-[var(--cr-ink)]">{patientName}</p>
-        {bedNumber && <p className="text-xs text-[var(--cr-muted)]">Bed {bedNumber}</p>}
+        <p className="text-sm font-semibold text-[var(--cr-ink)]">
+          {patientName}
+        </p>
+        {bedNumber && (
+          <p className="text-xs text-[var(--cr-muted)]">Bed {bedNumber}</p>
+        )}
       </div>
 
       <div className="flex-1 px-6 py-5 flex flex-col gap-5 max-w-3xl mx-auto w-full pb-28">
         <div>
-          <h3 className="text-sm font-bold text-[var(--cr-ink)] mb-3">Note Type</h3>
+          <h3 className="text-sm font-bold text-[var(--cr-ink)] mb-3">
+            Note Type
+          </h3>
           <Select
             label=""
             value={noteType}
@@ -425,8 +535,12 @@ function NurseReviewScreen({ patientName, bedNumber, result, patientId, onSaved 
         </div>
 
         <div>
-          <h3 className="text-sm font-bold text-[var(--cr-ink)] mb-2">Transcription</h3>
-          <p className="text-xs text-[var(--cr-muted)] mb-3">Review and edit before saving.</p>
+          <h3 className="text-sm font-bold text-[var(--cr-ink)] mb-2">
+            Transcription
+          </h3>
+          <p className="text-xs text-[var(--cr-muted)] mb-3">
+            Review and edit before saving.
+          </p>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -454,16 +568,26 @@ function NurseReviewScreen({ patientName, bedNumber, result, patientId, onSaved 
 
 // ─── Screen 3b — Doctor Review ────────────────────────────────────────────────
 
-function SoapEditor({ soap, onChange }: {
+function SoapEditor({
+  soap,
+  onChange,
+}: {
   soap: SoapContent;
   onChange: (s: SoapContent) => void;
 }) {
-  const fields: (keyof SoapContent)[] = ["subjective", "objective", "assessment", "plan"];
+  const fields: (keyof SoapContent)[] = [
+    "subjective",
+    "objective",
+    "assessment",
+    "plan",
+  ];
   return (
     <div className="flex flex-col gap-3">
       {fields.map((k) => (
         <div key={k}>
-          <label className="block text-xs font-bold tracking-wider text-[var(--cr-muted)] mb-1 capitalize">{k}</label>
+          <label className="block text-xs font-bold tracking-wider text-[var(--cr-muted)] mb-1 capitalize">
+            {k}
+          </label>
           <textarea
             value={soap[k]}
             onChange={(e) => onChange({ ...soap, [k]: e.target.value })}
@@ -485,7 +609,11 @@ interface RxCardProps {
 function RxCard({ rx, onEdit, onRemove }: RxCardProps) {
   const [editing, setEditing] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const [form, setForm] = useState({ ...rx, frequencyHours: String(rx.frequencyHours), totalDoses: String(rx.totalDoses) });
+  const [form, setForm] = useState({
+    ...rx,
+    frequencyHours: String(rx.frequencyHours),
+    totalDoses: String(rx.totalDoses),
+  });
 
   function handleSave() {
     const updated: AiPrescription = {
@@ -506,15 +634,47 @@ function RxCard({ rx, onEdit, onRemove }: RxCardProps) {
     return (
       <div className="border border-[var(--cr-accent)] rounded-lg p-4 flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Drug Name" value={form.drugName} onChange={(e) => setForm((f) => ({ ...f, drugName: e.target.value }))} />
-          <Input label="Dose" value={form.dose} onChange={(e) => setForm((f) => ({ ...f, dose: e.target.value }))} />
-          <Input label="Route" value={form.route} onChange={(e) => setForm((f) => ({ ...f, route: e.target.value }))} />
-          <Input label="Frequency (hours)" type="number" value={form.frequencyHours} onChange={(e) => setForm((f) => ({ ...f, frequencyHours: e.target.value }))} />
-          <Input label="Total Doses" type="number" value={form.totalDoses} onChange={(e) => setForm((f) => ({ ...f, totalDoses: e.target.value }))} />
+          <Input
+            label="Drug Name"
+            value={form.drugName}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, drugName: e.target.value }))
+            }
+          />
+          <Input
+            label="Dose"
+            value={form.dose}
+            onChange={(e) => setForm((f) => ({ ...f, dose: e.target.value }))}
+          />
+          <Input
+            label="Route"
+            value={form.route}
+            onChange={(e) => setForm((f) => ({ ...f, route: e.target.value }))}
+          />
+          <Input
+            label="Frequency (hours)"
+            type="number"
+            value={form.frequencyHours}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, frequencyHours: e.target.value }))
+            }
+          />
+          <Input
+            label="Total Doses"
+            type="number"
+            value={form.totalDoses}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, totalDoses: e.target.value }))
+            }
+          />
         </div>
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
-          <Button variant="primary" size="sm" onClick={handleSave}>Save</Button>
+          <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" onClick={handleSave}>
+            Save
+          </Button>
         </div>
       </div>
     );
@@ -525,14 +685,22 @@ function RxCard({ rx, onEdit, onRemove }: RxCardProps) {
       <div className="flex items-start justify-between">
         <div>
           <p className="font-bold text-[var(--cr-ink)]">{rx.drugName}</p>
-          <p className="text-sm text-[var(--cr-ink-2)]">{rx.dose} — {rx.route}</p>
+          <p className="text-sm text-[var(--cr-ink-2)]">
+            {rx.dose} — {rx.route}
+          </p>
           <p className="text-xs text-[var(--cr-muted)]">{rx.frequencyString}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setEditing(true)} className="text-[var(--cr-muted)] hover:text-[var(--cr-ink)]">
+          <button
+            onClick={() => setEditing(true)}
+            className="text-[var(--cr-muted)] hover:text-[var(--cr-ink)]"
+          >
             <Pencil size={14} />
           </button>
-          <button onClick={() => setConfirmRemove(true)} className="text-[var(--cr-muted)] hover:text-[var(--cr-danger)]">
+          <button
+            onClick={() => setConfirmRemove(true)}
+            className="text-[var(--cr-muted)] hover:text-[var(--cr-danger)]"
+          >
             <Trash2 size={14} />
           </button>
         </div>
@@ -541,8 +709,14 @@ function RxCard({ rx, onEdit, onRemove }: RxCardProps) {
       {/* Time chips */}
       <div className="flex flex-wrap gap-1.5 mt-3">
         {rx.administrationTimes.map((t) => (
-          <span key={t} className="px-2 py-0.5 rounded text-xs bg-[var(--cr-surface-3)] text-[var(--cr-muted)]">
-            {new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+          <span
+            key={t}
+            className="px-2 py-0.5 rounded text-xs bg-[var(--cr-surface-3)] text-[var(--cr-muted)]"
+          >
+            {new Date(t).toLocaleTimeString("en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </span>
         ))}
       </div>
@@ -552,8 +726,18 @@ function RxCard({ rx, onEdit, onRemove }: RxCardProps) {
         <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm flex items-center justify-between">
           <span className="text-red-700">Remove this prescription?</span>
           <div className="flex gap-2">
-            <button className="text-xs text-[var(--cr-muted)]" onClick={() => setConfirmRemove(false)}>Keep</button>
-            <button className="text-xs text-red-700 font-medium" onClick={onRemove}>Remove</button>
+            <button
+              className="text-xs text-[var(--cr-muted)]"
+              onClick={() => setConfirmRemove(false)}
+            >
+              Keep
+            </button>
+            <button
+              className="text-xs text-red-700 font-medium"
+              onClick={onRemove}
+            >
+              Remove
+            </button>
           </div>
         </div>
       )}
@@ -569,10 +753,19 @@ interface Screen3Props {
   onSaved: () => void;
 }
 
-function ReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: Screen3Props) {
+function ReviewScreen({
+  patientName,
+  bedNumber,
+  result,
+  patientId,
+  onSaved,
+}: Screen3Props) {
   const [confirmNote] = useConfirmNoteMutation();
+  console.log("[review] mounting ReviewScreen with result:", result);
   const [soap, setSoap] = useState<SoapContent>(result.clinicalNote);
-  const [prescriptions, setPrescriptions] = useState<AiPrescription[]>(result.prescriptions);
+  const [prescriptions, setPrescriptions] = useState<AiPrescription[]>(
+    result.prescriptions,
+  );
   const [transcriptionOpen, setTranscriptionOpen] = useState(false);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -581,7 +774,7 @@ function ReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: Sc
     setSaving(true);
     try {
       const content = `Subjective:\n${soap.subjective}\n\nObjective:\n${soap.objective}\n\nAssessment:\n${soap.assessment}\n\nPlan:\n${soap.plan}`;
-      await confirmNote({
+      const response = await confirmNote({
         patientId,
         noteType: "WARD_ROUND_NOTE",
         content,
@@ -599,7 +792,16 @@ function ReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: Sc
           administrationTimes: rx.administrationTimes,
         })),
       }).unwrap();
+      const rxCount = response.prescriptionIds.length;
+      toast.success(
+        "Note & medication chart saved",
+        rxCount > 0
+          ? `${rxCount} prescription${rxCount !== 1 ? "s" : ""} added to the medication chart`
+          : "Ward round note saved",
+      );
       onSaved();
+    } catch {
+      toast.error("Could not save note", "Check your connection and try again");
     } finally {
       setSaving(false);
       setSaveModalOpen(false);
@@ -610,8 +812,12 @@ function ReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: Sc
     <div className="min-h-screen bg-white flex flex-col">
       {/* Sticky patient context */}
       <div className="sticky top-0 bg-white border-b border-[var(--cr-line)] px-6 py-3 z-10">
-        <p className="text-sm font-semibold text-[var(--cr-ink)]">{patientName}</p>
-        {bedNumber && <p className="text-xs text-[var(--cr-muted)]">Bed {bedNumber}</p>}
+        <p className="text-sm font-semibold text-[var(--cr-ink)]">
+          {patientName}
+        </p>
+        {bedNumber && (
+          <p className="text-xs text-[var(--cr-muted)]">Bed {bedNumber}</p>
+        )}
       </div>
 
       <div className="flex-1 px-6 py-5 flex flex-col gap-6 max-w-3xl mx-auto w-full pb-28">
@@ -621,7 +827,11 @@ function ReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: Sc
             className="flex items-center gap-2 text-sm font-medium text-[var(--cr-ink)] w-full"
             onClick={() => setTranscriptionOpen((o) => !o)}
           >
-            {transcriptionOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            {transcriptionOpen ? (
+              <ChevronDown size={16} />
+            ) : (
+              <ChevronRight size={16} />
+            )}
             Raw Transcription
           </button>
           {transcriptionOpen && (
@@ -633,21 +843,31 @@ function ReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: Sc
 
         {/* Clinical Note */}
         <div>
-          <h3 className="text-sm font-bold text-[var(--cr-ink)] mb-3">Clinical Note</h3>
+          <h3 className="text-sm font-bold text-[var(--cr-ink)] mb-3">
+            Clinical Note
+          </h3>
           <SoapEditor soap={soap} onChange={setSoap} />
         </div>
 
         {/* Prescriptions */}
         {prescriptions.length > 0 && (
           <div>
-            <h3 className="text-sm font-bold text-[var(--cr-ink)] mb-3">Prescriptions</h3>
+            <h3 className="text-sm font-bold text-[var(--cr-ink)] mb-3">
+              Prescriptions
+            </h3>
             <div className="flex flex-col gap-3">
               {prescriptions.map((rx, i) => (
                 <RxCard
                   key={i}
                   rx={rx}
-                  onEdit={(updated) => setPrescriptions((p) => p.map((r, idx) => idx === i ? updated : r))}
-                  onRemove={() => setPrescriptions((p) => p.filter((_, idx) => idx !== i))}
+                  onEdit={(updated) =>
+                    setPrescriptions((p) =>
+                      p.map((r, idx) => (idx === i ? updated : r)),
+                    )
+                  }
+                  onRemove={() =>
+                    setPrescriptions((p) => p.filter((_, idx) => idx !== i))
+                  }
                 />
               ))}
             </div>
@@ -655,10 +875,21 @@ function ReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: Sc
         )}
 
         <button
-          onClick={() => setPrescriptions((p) => [
-            ...p,
-            { drugName: "", dose: "", route: "", frequencyString: "", frequencyHours: 6, totalDoses: 4, startTime: new Date().toISOString(), administrationTimes: [] },
-          ])}
+          onClick={() =>
+            setPrescriptions((p) => [
+              ...p,
+              {
+                drugName: "",
+                dose: "",
+                route: "",
+                frequencyString: "",
+                frequencyHours: 6,
+                totalDoses: 4,
+                startTime: new Date().toISOString(),
+                administrationTimes: [],
+              },
+            ])
+          }
           className="flex items-center gap-2 text-sm text-[var(--cr-accent)] font-medium"
         >
           <Plus size={14} />
@@ -668,25 +899,58 @@ function ReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: Sc
 
       {/* Sticky bottom bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--cr-line)] px-6 py-4">
-        <Button variant="primary" size="lg" onClick={() => setSaveModalOpen(true)} className="w-full max-w-3xl mx-auto block">
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={() => setSaveModalOpen(true)}
+          className="w-full max-w-3xl mx-auto block"
+        >
           Confirm and Save
         </Button>
       </div>
 
       {/* Save confirmation modal */}
-      <Modal open={saveModalOpen} onClose={() => setSaveModalOpen(false)} title="Save consultation note?">
+      <Modal
+        open={saveModalOpen}
+        onClose={() => setSaveModalOpen(false)}
+        title="Save consultation note?"
+      >
         <div className="px-6 py-5 flex flex-col gap-4">
           <div className="bg-[var(--cr-surface-2)] rounded p-3 text-sm">
-            <p><strong>Patient:</strong> {patientName}</p>
-            <p><strong>Date:</strong> {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
-            <p><strong>1 clinical note</strong> (AI-generated, reviewed)</p>
+            <p>
+              <strong>Patient:</strong> {patientName}
+            </p>
+            <p>
+              <strong>Date:</strong>{" "}
+              {new Date().toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
+            <p>
+              <strong>1 clinical note</strong> (AI-generated, reviewed)
+            </p>
             {prescriptions.length > 0 && (
-              <p><strong>{prescriptions.length} prescription{prescriptions.length !== 1 ? "s" : ""}</strong></p>
+              <p>
+                <strong>
+                  {prescriptions.length} prescription
+                  {prescriptions.length !== 1 ? "s" : ""}
+                </strong>
+              </p>
             )}
           </div>
           <div className="flex justify-end gap-3 pt-2 border-t border-[var(--cr-line)]">
-            <Button variant="outline" onClick={() => setSaveModalOpen(false)} disabled={saving}>Cancel</Button>
-            <Button variant="primary" onClick={handleSave} loading={saving}>Save</Button>
+            <Button
+              variant="outline"
+              onClick={() => setSaveModalOpen(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSave} loading={saving}>
+              Save
+            </Button>
           </div>
         </div>
       </Modal>
@@ -710,7 +974,8 @@ export default function RecordingFlow() {
   const [aiResult, setAiResult] = useState<AiProcessingResult | null>(null);
 
   const isNurse = role === "NURSE";
-  const backPath = role === "DOCTOR" ? `/doctor/patients/${id}` : `/nurse/patients/${id}`;
+  const backPath =
+    role === "DOCTOR" ? `/doctor/patients/${id}` : `/nurse/patients/${id}`;
 
   if (!patient) return null;
 
@@ -722,7 +987,10 @@ export default function RecordingFlow() {
         <RecordingScreen
           patientName={patientName}
           bedNumber={patient.bedNumber}
-          onStop={(blob) => { setAudioBlob(blob); setScreen("processing"); }}
+          onStop={(blob) => {
+            setAudioBlob(blob);
+            setScreen("processing");
+          }}
           onCancel={() => navigate(backPath)}
         />
       )}
@@ -733,7 +1001,10 @@ export default function RecordingFlow() {
           isNurse={isNurse}
           patientId={patient.id}
           audioBlob={audioBlob}
-          onDone={(result) => { setAiResult(result); setScreen("review"); }}
+          onDone={(result) => {
+            setAiResult(result);
+            setScreen("review");
+          }}
         />
       )}
       {screen === "review" && aiResult && isNurse && (

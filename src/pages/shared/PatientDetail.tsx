@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Mic, Plus, AlertTriangle, ChevronLeft, Pause, Play, Square, X } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/app/hooks";
 import { clinicalNotesApi } from "@/services/api/clinicalNotes";
+import { toast } from "@/components/ui/toast";
 import type { AiProcessingResult } from "@/types/domain";
 
 // ─── AI voice note API call ───────────────────────────────────────────────────
@@ -16,16 +17,16 @@ async function processVoiceNote(
   onTranscriptionComplete: () => void,
 ): Promise<AiProcessingResult | null> {
   const token = localStorage.getItem("cr_access_token");
-  const ext = audioBlob.type.includes("ogg") ? "ogg"
-    : audioBlob.type.includes("mp4") || audioBlob.type.includes("m4a") ? "m4a"
-    : audioBlob.type.includes("wav") ? "wav"
-    : "webm";
   if (audioBlob.size === 0) return null;
-  const formData = new FormData();
-  formData.append("audio", audioBlob, `recording.${ext}`);
+  console.log("[audio] blobSize:", audioBlob.size, "blobType:", audioBlob.type);
   const mode = isNurse ? "transcription_only" : "ward_round";
+  const formData = new FormData();
+  formData.append("audio", audioBlob, "recording.webm");
+  formData.append("patient_id", patientId);
+  formData.append("current_time", new Date().toISOString());
+  formData.append("mode", mode);
   try {
-    const res = await fetch(`${aiApiBaseUrl}/ai/process-voice-note?patientId=${encodeURIComponent(patientId)}&mode=${mode}`, {
+    const res = await fetch(`${aiApiBaseUrl}/ai/process-voice-note`, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
@@ -35,6 +36,7 @@ async function processVoiceNote(
     const decoder = new TextDecoder();
     let buffer = "";
     let pendingEvent = "";
+    let pendingData = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -44,24 +46,25 @@ async function processVoiceNote(
       for (const line of lines) {
         if (line.startsWith("event:")) {
           pendingEvent = line.slice(6).trim();
-          continue;
-        }
-        if (!line.startsWith("data:")) continue;
-        const raw = line.slice(5).trim();
-        if (!raw || raw === "[DONE]") { pendingEvent = ""; continue; }
-        if (pendingEvent === "transcription_complete") {
-          onTranscriptionComplete();
-          pendingEvent = "";
-          continue;
-        }
-        try {
-          const parsed = JSON.parse(raw);
-          const payload = parsed?.data ?? parsed;
-          if (payload?.rawTranscription !== undefined && payload?.clinicalNote !== undefined) {
-            return payload as AiProcessingResult;
+        } else if (line.startsWith("data:")) {
+          pendingData = line.slice(5).trim();
+        } else if (line === "") {
+          // blank line = event boundary, dispatch
+          if (pendingEvent === "transcription_complete") {
+            onTranscriptionComplete();
+          } else if (pendingEvent === "processing_complete" && pendingData) {
+            try {
+              const parsed = JSON.parse(pendingData);
+              if (parsed?.rawTranscription !== undefined && parsed?.clinicalNote !== undefined) {
+                return parsed as AiProcessingResult;
+              }
+            } catch { /* malformed */ }
+          } else if (pendingEvent === "error") {
+            return null;
           }
-        } catch { /* non-JSON */ }
-        pendingEvent = "";
+          pendingEvent = "";
+          pendingData = "";
+        }
       }
     }
     return null;
@@ -90,7 +93,7 @@ import { AcuityBadge, VhiBadge } from "@/components/ui/badge";
 import { ageFromDob, formatDateTime, timeAgo } from "@/utils/format";
 import { computeVhi, countFilledVitals } from "@/utils/vhi";
 import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid,
+  ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -212,12 +215,10 @@ function RecordingCard({ patientName, bedNumber, isNurse, patientId, onCancel, o
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then((stream) => {
-        const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : MediaRecorder.isTypeSupported("audio/mp4")
-          ? "audio/mp4"
-          : "";
-        const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "audio/webm";
+        const mr = new MediaRecorder(stream, { mimeType });
         mediaRef.current = mr;
         mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
         mr.start(100);
@@ -285,6 +286,7 @@ function RecordingCard({ patientName, bedNumber, isNurse, patientId, onCancel, o
     const mr = mediaRef.current;
     if (mr && mr.state !== "inactive") {
       mr.onstop = () => {
+        console.log("[audio] chunkCount:", chunksRef.current.length);
         const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
         if (blob.size === 0) { setMicError(true); return; }
         audioBlobRef.current = blob;
@@ -560,15 +562,12 @@ const NURSE_NOTE_TYPES = [
 
 function NotesTab({
   patientId, canWrite, recording, onAddNote, onStartRecording,
-  prescriptionNotice, onDismissPrescriptionNotice,
 }: {
   patientId: string;
   canWrite: boolean;
   recording: boolean;
   onAddNote: () => void;
   onStartRecording: () => void;
-  prescriptionNotice: boolean;
-  onDismissPrescriptionNotice: () => void;
 }) {
   const { data: notesData } = useGetPatientNotesQuery(patientId);
   const notes = notesData ?? [];
@@ -580,17 +579,6 @@ function NotesTab({
 
   return (
     <div className="flex flex-col">
-      {prescriptionNotice && (
-        <div className="flex items-start gap-3 mb-4 p-3 bg-teal-50 border border-teal-200 rounded-lg text-sm text-teal-800">
-          <p className="flex-1">
-            Ward round note saved. Prescriptions are being extracted — check the{" "}
-            <strong>Medications</strong> tab shortly.
-          </p>
-          <button onClick={onDismissPrescriptionNotice} className="text-teal-500 hover:text-teal-700 shrink-0">
-            <X size={16} />
-          </button>
-        </div>
-      )}
       {canWrite && (
         <div className="flex justify-end mb-4">
           <Button variant="outline" size="sm" onClick={onAddNote}>
@@ -1008,14 +996,31 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
 // ─── Tab 4 — Vitals ───────────────────────────────────────────────────────────
 
 type VitalsRange = "24h" | "48h" | "7d" | "all";
+type VitalKey = "pulse" | "systolicBp" | "respiratoryRate" | "temperature" | "spo2";
+
+const VITAL_TABS: { key: VitalKey; label: string; unit: string }[] = [
+  { key: "pulse",           label: "Pulse",     unit: "bpm"    },
+  { key: "systolicBp",      label: "Sys. BP",   unit: "mmHg"   },
+  { key: "respiratoryRate", label: "Resp.",      unit: "br/min" },
+  { key: "temperature",     label: "Temp",       unit: "°C"     },
+  { key: "spo2",            label: "SpO₂",       unit: "%"      },
+];
+
+function barColor(score: number) {
+  if (score >= 3) return "#ef4444";
+  if (score >= 1) return "#f59e0b";
+  return "#22c55e";
+}
 
 function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boolean }) {
   const { data: vitalsData } = useGetPatientVitalsQuery(patientId);
   const [recordVitals] = useRecordVitalsMutation();
   const vitals = (vitalsData ?? []) as PatientVitalsEnriched[];
   const [range, setRange] = useState<VitalsRange>("48h");
+  const [selectedVital, setSelectedVital] = useState<VitalKey>("pulse");
   const [recordOpen, setRecordOpen] = useState(false);
   const [vForm, setVForm] = useState({ pulse: "", systolicBp: "", diastolicBp: "", respiratoryRate: "", temperature: "", spo2: "" });
+  const [vErrors, setVErrors] = useState<Partial<typeof vForm>>({});
   const [saving, setSaving] = useState(false);
 
   const rangeCutoff: Record<VitalsRange, number> = { "24h": 24, "48h": 48, "7d": 168, "all": Infinity };
@@ -1025,11 +1030,14 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
     .filter((v) => now - new Date(v.recordedAt).getTime() <= cutoffMs)
     .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
 
-  const chartData = chartVitals.map((v) => ({
-    time: fmtChartTime(v.recordedAt),
-    Pulse: v.pulse, "Sys. BP": v.systolicBp,
-    "Resp. Rate": v.respiratoryRate, Temp: v.temperature, "SpO₂": v.spo2,
-  }));
+  const activeTab = VITAL_TABS.find((t) => t.key === selectedVital)!;
+  const barData = chartVitals
+    .filter((v) => v[selectedVital] != null)
+    .map((v) => ({
+      time: fmtChartTime(v.recordedAt),
+      value: v[selectedVital] as number,
+      score: computeVhi(v)[selectedVital],
+    }));
 
   const vhiPreview = countFilledVitals(vForm) >= 2 ? computeVhi(vForm) : null;
   const vhiGuide: Record<string, string> = {
@@ -1040,19 +1048,44 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
 
   async function handleRecordVitals(e: React.FormEvent) {
     e.preventDefault();
+    const errs: Partial<typeof vForm> = {};
+    const n = (v: string) => Number(v);
+
+    if (!vForm.pulse) errs.pulse = "Required";
+    else if (n(vForm.pulse) < 20 || n(vForm.pulse) > 300) errs.pulse = "20 – 300";
+
+    if (!vForm.systolicBp) errs.systolicBp = "Required";
+    else if (n(vForm.systolicBp) < 50 || n(vForm.systolicBp) > 300) errs.systolicBp = "50 – 300";
+
+    if (vForm.diastolicBp && (n(vForm.diastolicBp) < 20 || n(vForm.diastolicBp) > 200))
+      errs.diastolicBp = "20 – 200";
+
+    if (!vForm.respiratoryRate) errs.respiratoryRate = "Required";
+    else if (n(vForm.respiratoryRate) < 1 || n(vForm.respiratoryRate) > 70) errs.respiratoryRate = "1 – 70";
+
+    if (!vForm.temperature) errs.temperature = "Required";
+    else if (n(vForm.temperature) < 25 || n(vForm.temperature) > 45) errs.temperature = "25 – 45";
+
+    if (!vForm.spo2) errs.spo2 = "Required";
+    else if (n(vForm.spo2) < 50 || n(vForm.spo2) > 100) errs.spo2 = "50 – 100";
+
+    if (Object.keys(errs).length > 0) { setVErrors(errs); return; }
+    setVErrors({});
+
     setSaving(true);
     try {
       await recordVitals({
         patientId,
-        pulse: vForm.pulse ? Number(vForm.pulse) : undefined,
-        systolicBp: vForm.systolicBp ? Number(vForm.systolicBp) : undefined,
-        diastolicBp: vForm.diastolicBp ? Number(vForm.diastolicBp) : undefined,
-        respiratoryRate: vForm.respiratoryRate ? Number(vForm.respiratoryRate) : undefined,
-        temperature: vForm.temperature ? Number(vForm.temperature) : undefined,
-        spo2: vForm.spo2 ? Number(vForm.spo2) : undefined,
+        pulse: n(vForm.pulse),
+        systolicBp: n(vForm.systolicBp),
+        diastolicBp: vForm.diastolicBp ? n(vForm.diastolicBp) : undefined,
+        respiratoryRate: n(vForm.respiratoryRate),
+        temperature: n(vForm.temperature),
+        spo2: n(vForm.spo2),
       }).unwrap();
       setRecordOpen(false);
       setVForm({ pulse: "", systolicBp: "", diastolicBp: "", respiratoryRate: "", temperature: "", spo2: "" });
+      setVErrors({});
     } finally { setSaving(false); }
   }
 
@@ -1065,34 +1098,71 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
           </Button>
         </div>
       )}
-      {chartData.length > 0 ? (
-        <div className="mb-5">
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--cr-line)" />
-              <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="Pulse" stroke="#ef4444" dot={false} strokeWidth={1.5} />
-              <Line type="monotone" dataKey="Sys. BP" stroke="#f97316" dot={false} strokeWidth={1.5} />
-              <Line type="monotone" dataKey="Resp. Rate" stroke="#3b82f6" dot={false} strokeWidth={1.5} />
-              <Line type="monotone" dataKey="Temp" stroke="#a855f7" dot={false} strokeWidth={1.5} />
-              <Line type="monotone" dataKey="SpO₂" stroke="#14b8a6" dot={false} strokeWidth={1.5} />
-            </LineChart>
-          </ResponsiveContainer>
-          <div className="flex gap-2 justify-center mt-2">
+      {vitals.length > 0 && (
+        <div className="mb-5 bg-white border border-[var(--cr-line)] rounded-lg p-4">
+          {/* Vital selector */}
+          <div className="flex gap-1 mb-4 flex-wrap">
+            {VITAL_TABS.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setSelectedVital(key)}
+                className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
+                  selectedVital === key
+                    ? "bg-[var(--cr-accent)] text-white"
+                    : "bg-[var(--cr-surface-3)] text-[var(--cr-muted)] hover:text-[var(--cr-ink)]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {barData.length > 0 ? (
+            <>
+              <p className="text-xs text-[var(--cr-muted)] mb-2">
+                {activeTab.label} <span className="text-[var(--cr-ink-2)]">({activeTab.unit})</span>
+              </p>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={barData} barCategoryGap="35%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--cr-line)" vertical={false} />
+                  <XAxis dataKey="time" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} width={36} />
+                  <Tooltip
+                    formatter={(val: number) => [`${val} ${activeTab.unit}`, activeTab.label]}
+                    contentStyle={{ fontSize: 12 }}
+                  />
+                  <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+                    {barData.map((entry, i) => (
+                      <Cell key={i} fill={barColor(entry.score)} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              {/* Legend */}
+              <div className="flex items-center gap-4 mt-2 justify-center">
+                {[{ color: "#22c55e", label: "Normal" }, { color: "#f59e0b", label: "Watch" }, { color: "#ef4444", label: "Critical" }].map(({ color, label }) => (
+                  <div key={label} className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: color }} />
+                    <span className="text-xs text-[var(--cr-muted)]">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-[var(--cr-muted)] text-center py-4">No {activeTab.label} readings in this range.</p>
+          )}
+
+          {/* Range selector */}
+          <div className="flex gap-2 justify-center mt-3">
             {(["24h", "48h", "7d", "all"] as VitalsRange[]).map((r) => (
               <button key={r} onClick={() => setRange(r)} className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
-                range === r ? "bg-[var(--cr-accent)] text-white" : "bg-[var(--cr-surface-3)] text-[var(--cr-muted)] hover:text-[var(--cr-ink)]"
+                range === r ? "bg-[var(--cr-ink)] text-white" : "bg-[var(--cr-surface-3)] text-[var(--cr-muted)] hover:text-[var(--cr-ink)]"
               }`}>
-                {r === "all" ? "Full" : `Last ${r}`}
+                {r === "all" ? "Full history" : `Last ${r}`}
               </button>
             ))}
           </div>
         </div>
-      ) : (
-        <p className="text-sm text-[var(--cr-muted)] text-center py-4">No vitals in this range.</p>
       )}
 
       <div className="overflow-x-auto">
@@ -1150,12 +1220,12 @@ function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boole
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Pulse (bpm)" type="number" value={vForm.pulse} onChange={(e) => setVForm((f) => ({ ...f, pulse: e.target.value }))} />
-            <Input label="Systolic BP (mmHg)" type="number" value={vForm.systolicBp} onChange={(e) => setVForm((f) => ({ ...f, systolicBp: e.target.value }))} />
-            <Input label="Diastolic BP (mmHg)" type="number" value={vForm.diastolicBp} onChange={(e) => setVForm((f) => ({ ...f, diastolicBp: e.target.value }))} hint="Stored for reference — not scored" />
-            <Input label="Respiratory Rate (br/min)" type="number" value={vForm.respiratoryRate} onChange={(e) => setVForm((f) => ({ ...f, respiratoryRate: e.target.value }))} />
-            <Input label="Temperature (°C)" type="number" step="0.1" value={vForm.temperature} onChange={(e) => setVForm((f) => ({ ...f, temperature: e.target.value }))} />
-            <Input label="SpO₂ (%)" type="number" step="0.1" value={vForm.spo2} onChange={(e) => setVForm((f) => ({ ...f, spo2: e.target.value }))} hint="Oxygen Saturation" />
+            <Input label="Pulse (bpm) *" type="number" min={20} max={300} placeholder="20 – 300" value={vForm.pulse} onChange={(e) => setVForm((f) => ({ ...f, pulse: e.target.value }))} error={vErrors.pulse} />
+            <Input label="Systolic BP (mmHg) *" type="number" min={50} max={300} placeholder="50 – 300" value={vForm.systolicBp} onChange={(e) => setVForm((f) => ({ ...f, systolicBp: e.target.value }))} error={vErrors.systolicBp} />
+            <Input label="Diastolic BP (mmHg)" type="number" min={20} max={200} placeholder="20 – 200" value={vForm.diastolicBp} onChange={(e) => setVForm((f) => ({ ...f, diastolicBp: e.target.value }))} hint="Optional" error={vErrors.diastolicBp} />
+            <Input label="Respiratory Rate (br/min) *" type="number" min={1} max={70} placeholder="1 – 70" value={vForm.respiratoryRate} onChange={(e) => setVForm((f) => ({ ...f, respiratoryRate: e.target.value }))} error={vErrors.respiratoryRate} />
+            <Input label="Temperature (°C) *" type="number" step="0.1" min={25} max={45} placeholder="25.0 – 45.0" value={vForm.temperature} onChange={(e) => setVForm((f) => ({ ...f, temperature: e.target.value }))} error={vErrors.temperature} />
+            <Input label="SpO₂ (%) *" type="number" step="0.1" min={50} max={100} placeholder="50 – 100" value={vForm.spo2} onChange={(e) => setVForm((f) => ({ ...f, spo2: e.target.value }))} error={vErrors.spo2} />
           </div>
           <div className="flex justify-end gap-3 pt-2 border-t border-[var(--cr-line)]">
             <Button type="button" variant="outline" onClick={() => setRecordOpen(false)} disabled={saving}>Cancel</Button>
@@ -1194,7 +1264,7 @@ export default function PatientDetail() {
   const [noteType, setNoteType] = useState<NoteType>(isNurse ? "HANDOVER_NOTE" : "WARD_ROUND_NOTE");
   const [noteContent, setNoteContent] = useState("");
   const [saving, setSaving] = useState(false);
-  const [prescriptionProcessingNotice, setPrescriptionProcessingNotice] = useState(false);
+  const [prescriptionExtracting, setPrescriptionExtracting] = useState(false);
 
   function openAddNote(prefillContent?: string, prefillType?: NoteType) {
     setNoteContent(prefillContent ?? "");
@@ -1230,7 +1300,8 @@ export default function PatientDetail() {
         })
       );
 
-      // Fire and forget — AI prescription extraction runs in the background
+      // Fire and observe — AI prescription extraction runs in the background
+      setPrescriptionExtracting(true);
       confirmNote({
         patientId: patient.id,
         noteType: "WARD_ROUND_NOTE",
@@ -1238,9 +1309,23 @@ export default function PatientDetail() {
         isAiGenerated: false,
         extractPrescriptionsFromAi: true,
         prescriptions: [],
+      }).unwrap().then((response) => {
+        setPrescriptionExtracting(false);
+        const rxCount = response.prescriptionIds.length;
+        toast.success(
+          "Prescriptions extracted",
+          rxCount > 0
+            ? `${rxCount} prescription${rxCount !== 1 ? "s" : ""} added to the medication chart`
+            : "No prescriptions found in the note",
+        );
+      }).catch(() => {
+        setPrescriptionExtracting(false);
+        toast.error(
+          "Prescription extraction failed",
+          "Note was saved, but medications were not added to the chart",
+        );
       });
 
-      setPrescriptionProcessingNotice(true);
       setNoteContent("");
       setAddOpen(false);
       return;
@@ -1309,6 +1394,14 @@ export default function PatientDetail() {
             </div>
           </div>
 
+          {/* Extraction in-progress indicator */}
+          {prescriptionExtracting && (
+            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-xs text-teal-700 font-medium">
+              <span className="w-3 h-3 border-2 border-teal-400 border-t-transparent rounded-full animate-spin shrink-0" />
+              Extracting prescriptions…
+            </div>
+          )}
+
           {/* Tabs */}
           <div className="flex gap-1 mt-3">
             {tabs.map(({ key, label }) => (
@@ -1339,8 +1432,6 @@ export default function PatientDetail() {
               recording={recording}
               onAddNote={() => openAddNote()}
               onStartRecording={() => setRecording(true)}
-              prescriptionNotice={prescriptionProcessingNotice}
-              onDismissPrescriptionNotice={() => setPrescriptionProcessingNotice(false)}
             />
           )}
           {activeTab === "medications" && <MedicationsTab patientId={patient.id} canWrite={canWrite} />}

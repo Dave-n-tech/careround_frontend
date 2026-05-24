@@ -24,11 +24,9 @@ const persistedUser: User | null = (() => {
 })();
 
 const initialState: AuthState = {
-  status: persistedAccessToken
-    ? persistedUser
-      ? "authenticated"
-      : "loading"
-    : "idle",
+  // Always "loading" when a token exists — session is validated via getMe on mount.
+  // Cached user/role are kept for optimistic rendering while validation is in-flight.
+  status: persistedAccessToken ? "loading" : "idle",
   user: persistedUser,
   role: persistedRole,
   accessToken: persistedAccessToken,
@@ -87,6 +85,8 @@ const authSlice = createSlice({
     });
 
     builder.addMatcher(authApi.endpoints.getMe.matchRejected, (state) => {
+      // 401s are handled by the cr:auth-expired event (baseQuery fires it, App.tsx clears auth).
+      // For any other failure during initial session validation, mark as error so guards redirect.
       if (state.status === "authenticated") return;
       state.status = "error";
       state.error = "Unable to load session";

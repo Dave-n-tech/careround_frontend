@@ -182,7 +182,10 @@ const GROUP_ORDER: Group[] = ["OVERDUE", "DUE_SOON", "UPCOMING", "COMPLETED"];
 
 export default function NurseTasks() {
   const wardId = useAppSelector((s) => s.auth.user?.wardId);
-  const { data: tasksData } = useGetMedicationTasksQuery({ wardId });
+  const { data: tasksData } = useGetMedicationTasksQuery(
+    { wardId },
+    { skip: !wardId },
+  );
 
   const grouped: Record<Group, MedicationTaskEnriched[]> = {
     OVERDUE:   tasksData?.overdue  ?? [],
@@ -190,7 +193,7 @@ export default function NurseTasks() {
     UPCOMING:  tasksData?.upcoming ?? [],
     COMPLETED: tasksData?.completed ?? [],
   };
-
+  
   const pendingCount = grouped.OVERDUE.length + grouped.DUE_SOON.length;
 
   return (

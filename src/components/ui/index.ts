@@ -11,3 +11,4 @@ export { Card, CardHeader, CardTitle, CardContent, CardFooter } from "./card";
 export { Modal, ConfirmModal } from "./modal";
 export { StatCard } from "./stat-card";
 export { EmptyState } from "./empty-state";
+export { toast, ToastContainer } from "./toast";

@@ -7,12 +7,12 @@ export interface PatientVitalsEnriched extends PatientVitals {
 
 export interface RecordVitalsRequest {
   patientId: string;
-  pulse?: number;
-  systolicBp?: number;
-  diastolicBp?: number;
-  respiratoryRate?: number;
-  temperature?: number;
-  spo2?: number;
+  pulse: number;           // required, 20–300
+  systolicBp: number;      // required, 50–300
+  diastolicBp?: number;    // optional, 20–200
+  respiratoryRate: number; // required, 1–70
+  temperature: number;     // required, 25–45
+  spo2: number;            // required, 50–100
 }
 
 export const vitalsApi = api.injectEndpoints({
@@ -22,7 +22,7 @@ export const vitalsApi = api.injectEndpoints({
       providesTags: (_r, _e, id) => [{ type: "Vitals", id }],
     }),
     recordVitals: build.mutation<PatientVitalsEnriched, RecordVitalsRequest>({
-      query: (body) => ({ url: `/patients/${body.patientId}/vitals`, method: "POST", body }),
+      query: ({ patientId, ...body }) => ({ url: `/patients/${patientId}/vitals`, method: "POST", body }),
       invalidatesTags: (_r, _e, arg) => [{ type: "Vitals", id: arg.patientId }, "Patients"],
     }),
   }),

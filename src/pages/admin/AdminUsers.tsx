@@ -1,12 +1,14 @@
 import { useState, useMemo } from "react";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Building2 } from "lucide-react";
 import {
   useGetUsersQuery,
   useCreateUserMutation,
   useUpdateUserMutation,
   useDeactivateUserMutation,
   useReactivateUserMutation,
+  useAssignWardMutation,
 } from "@/services/api/users";
+import { useGetWardsQuery } from "@/services/api/wards";
 import type { Role, User } from "@/types/domain";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,20 +151,85 @@ function UserModal({ open, onClose, existing, onSave }: UserModalProps) {
   );
 }
 
+// ─── Assign ward modal ────────────────────────────────────────────────────────
+
+interface AssignWardModalProps {
+  open: boolean;
+  onClose: () => void;
+  user: User;
+  onSave: (wardId: string) => Promise<void>;
+}
+
+function AssignWardModal({ open, onClose, user, onSave }: AssignWardModalProps) {
+  const { data: wardsData } = useGetWardsQuery();
+  const activeWards = (wardsData ?? []).filter((w) => w.isActive);
+  const [wardId, setWardId] = useState(user.wardId ?? "");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!wardId) { setError("Please select a ward"); return; }
+    setLoading(true);
+    try {
+      await onSave(wardId);
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Assign Ward">
+      <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4">
+        <p className="text-sm text-[var(--cr-muted)]">
+          Assigning ward for <strong>{user.firstName} {user.lastName}</strong> ({ROLE_LABELS[user.role]})
+        </p>
+        {user.wardId && (
+          <div className="px-3 py-2 rounded bg-[var(--cr-surface-3)] text-xs text-[var(--cr-muted)]">
+            Current ward: <strong className="text-[var(--cr-ink)]">
+              {activeWards.find((w) => w.id === user.wardId)?.name ?? user.wardId}
+            </strong>
+          </div>
+        )}
+        <Select
+          label="Ward *"
+          value={wardId}
+          onChange={(e) => { setWardId(e.target.value); setError(""); }}
+          options={activeWards.map((w) => ({ value: w.id, label: `${w.name}${w.specialty ? ` — ${w.specialty}` : ""}` }))}
+          error={error}
+        />
+        <div className="flex justify-end gap-3 pt-2 border-t border-[var(--cr-line)]">
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button type="submit" variant="primary" loading={loading}>Assign Ward</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AdminUsers() {
   const { data: usersData } = useGetUsersQuery();
+  const { data: wardsData } = useGetWardsQuery();
   const [createUser] = useCreateUserMutation();
   const [updateUser] = useUpdateUserMutation();
   const [deactivateUser] = useDeactivateUserMutation();
   const [reactivateUser] = useReactivateUserMutation();
+  const [assignWard] = useAssignWardMutation();
 
   const allUsers = usersData ?? [];
+  const wardsById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const w of wardsData ?? []) map[w.id] = w.name;
+    return map;
+  }, [wardsData]);
 
   const [tab, setTab] = useState<TabFilter>("ALL");
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<User | null>(null);
+  const [assignTarget, setAssignTarget] = useState<User | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
   const [actioning, setActioning] = useState(false);
 
@@ -190,6 +257,11 @@ export default function AdminUsers() {
       email: form.email,
       role: form.role as Role,
     }).unwrap();
+  }
+
+  async function handleAssignWard(wardId: string) {
+    if (!assignTarget) return;
+    await assignWard({ userId: assignTarget.id, wardId }).unwrap();
   }
 
   async function handleDeactivate() {
@@ -255,19 +327,35 @@ export default function AdminUsers() {
                   <th>Full Name</th>
                   <th>Email</th>
                   <th>Role</th>
+                  <th>Ward</th>
                   <th>Status</th>
                   <th>Date Added</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((user) => (
+                {filtered.map((user) => {
+                  const canBeAssigned = user.role === "NURSE" || user.role === "SUPERVISOR";
+                  return (
                   <tr key={user.id} className="row-hover">
                     <td className="font-medium text-[var(--cr-ink)]">
                       {user.firstName} {user.lastName}
                     </td>
                     <td className="text-[var(--cr-ink-2)]">{user.email}</td>
                     <td className="text-[var(--cr-ink-2)]">{ROLE_LABELS[user.role]}</td>
+                    <td>
+                      {canBeAssigned ? (
+                        user.wardId ? (
+                          <span className="text-sm text-[var(--cr-ink-2)]">
+                            {wardsById[user.wardId] ?? user.wardId}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-amber-600 font-medium">Unassigned</span>
+                        )
+                      ) : (
+                        <span className="text-xs text-[var(--cr-muted)]">—</span>
+                      )}
+                    </td>
                     <td>
                       <span
                         className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold uppercase ${
@@ -290,6 +378,16 @@ export default function AdminUsers() {
                         >
                           <Pencil size={13} />
                         </Button>
+                        {canBeAssigned && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            title="Assign Ward"
+                            onClick={() => setAssignTarget(user)}
+                          >
+                            <Building2 size={13} />
+                          </Button>
+                        )}
                         <button
                           onClick={() => setDeactivateTarget(user)}
                           className={`text-xs font-medium transition-colors ${
@@ -303,7 +401,8 @@ export default function AdminUsers() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -318,6 +417,15 @@ export default function AdminUsers() {
           onClose={() => setEditTarget(null)}
           existing={editTarget}
           onSave={handleEdit}
+        />
+      )}
+
+      {assignTarget && (
+        <AssignWardModal
+          open={!!assignTarget}
+          onClose={() => setAssignTarget(null)}
+          user={assignTarget}
+          onSave={handleAssignWard}
         />
       )}
 

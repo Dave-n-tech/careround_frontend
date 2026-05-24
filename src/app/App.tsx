@@ -23,6 +23,7 @@ import DoctorPatients from "@/pages/doctor/DoctorPatients";
 import RecordingFlow from "@/pages/doctor/RecordingFlow";
 import NurseTasks from "@/pages/nurse/NurseTasks";
 import SupervisorDashboard from "@/pages/supervisor/SupervisorDashboard";
+import { ToastContainer } from "@/components/ui/toast";
 import type { Role } from "@/types/domain";
 
 const ROLE_HOME: Record<Role, string> = {
@@ -59,14 +60,17 @@ export default function App() {
     return () => window.removeEventListener("cr:auth-expired", onExpired);
   }, [dispatch, navigate]);
 
-  // After login, fetch the user profile (skipped in dev mock mode — user already set)
+  // Validate the session on every mount when a token exists.
+  // Covers both: initial load with cached credentials and post-login getMe.
   useEffect(() => {
-    if (accessToken && status === "loading" && !user) {
+    if (accessToken && status === "loading") {
       fetchMe();
     }
   }, [accessToken, fetchMe, status, user]);
 
   return (
+    <>
+    <ToastContainer />
     <Routes>
       {/* Public */}
       <Route path="/" element={<LandingPage />} />
@@ -125,5 +129,6 @@ export default function App() {
         }
       />
     </Routes>
+    </>
   );
 }

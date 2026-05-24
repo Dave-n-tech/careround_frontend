@@ -140,7 +140,10 @@ export const prescriptionsApi = api.injectEndpoints({
       ],
     }),
     getMedicationTasks: build.query<TaskListResponse, { wardId?: string }>({
-      query: (params) => ({ url: "/medication-tasks", params }),
+      query: ({ wardId }) => ({
+        url: "/medication-tasks",
+        params: wardId ? { wardId } : undefined,
+      }),
       providesTags: ["MedicationTasks"],
     }),
     completeTask: build.mutation<void, CompleteTaskRequest>({

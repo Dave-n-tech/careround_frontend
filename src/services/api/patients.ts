@@ -32,10 +32,8 @@ export const patientsApi = api.injectEndpoints({
       providesTags: ["Patients"],
     }),
     // GET /patients/ward/{wardId} — returns admitted patients for a ward
-    getPatients: build.query<Patient[], { wardId?: string }>({
-      query: ({ wardId }) => ({
-        url: wardId ? `/patients/ward/${wardId}` : "/patients/ward/unknown",
-      }),
+    getPatients: build.query<Patient[], { wardId: string }>({
+      query: ({ wardId }) => `/patients/ward/${wardId}`,
       providesTags: ["Patients"],
     }),
     getPatient: build.query<Patient, string>({

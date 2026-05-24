@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { LogOut, Check } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { clearAuth, patchUser } from "@/features/auth/authSlice";
@@ -256,7 +256,7 @@ export default function ProfilePage() {
     navigate("/login", { replace: true });
   }
 
-  if (!user || !role) return null;
+  if (!user || !role) return <Navigate to="/login" replace />;
 
   return (
     <div className="p-6 max-w-xl mx-auto">

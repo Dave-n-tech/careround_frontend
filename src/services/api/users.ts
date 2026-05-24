@@ -17,6 +17,11 @@ interface UpdateUserRequest {
   role?: Role;
 }
 
+interface AssignWardRequest {
+  userId: string;
+  wardId: string;
+}
+
 interface UpdateProfileRequest {
   firstName?: string;
   lastName?: string;
@@ -45,6 +50,14 @@ export const usersApi = api.injectEndpoints({
       query: (id) => ({ url: `/users/${id}/reactivate`, method: "PUT" }),
       invalidatesTags: ["Users"],
     }),
+    assignWard: build.mutation<void, AssignWardRequest>({
+      query: ({ userId, wardId }) => ({
+        url: `/users/${userId}/ward-assignment`,
+        method: "PUT",
+        body: { wardId },
+      }),
+      invalidatesTags: ["Users"],
+    }),
     updateMe: build.mutation<void, UpdateProfileRequest>({
       query: (body) => ({ url: "/users/me", method: "PUT", body }),
     }),
@@ -59,4 +72,5 @@ export const {
   useDeactivateUserMutation,
   useReactivateUserMutation,
   useUpdateMeMutation,
+  useAssignWardMutation,
 } = usersApi;
