@@ -6,7 +6,6 @@ import {
   useUpdatePatientStatusMutation,
 } from "@/services/api/patients";
 import { useGetWardsQuery } from "@/services/api/wards";
-import { MOCK_PATIENTS, MOCK_WARDS } from "@/lib/mock-data";
 import type { AdmissionType, Patient, PatientGender } from "@/types/domain";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,10 +34,7 @@ interface PatientForm {
   wardId: string;
   bedNumber: string;
   admissionType: string;
-  admissionDate: string;
 }
-
-const now = new Date().toISOString().slice(0, 16);
 
 const EMPTY_FORM: PatientForm = {
   firstName: "",
@@ -56,7 +52,6 @@ const EMPTY_FORM: PatientForm = {
   wardId: "",
   bedNumber: "",
   admissionType: "EMERGENCY",
-  admissionDate: now,
 };
 
 function patientToForm(p: Patient): PatientForm {
@@ -76,7 +71,6 @@ function patientToForm(p: Patient): PatientForm {
     wardId: p.wardId,
     bedNumber: p.bedNumber ?? "",
     admissionType: p.admissionType,
-    admissionDate: new Date(p.admissionDate).toISOString().slice(0, 16),
   };
 }
 
@@ -119,7 +113,6 @@ function PatientFormModal({ open, onClose, wards, existing, onSave }: PatientFor
     if (!existing && !form.hospitalNumber.trim()) errs.hospitalNumber = "Required";
     if (!form.wardId) errs.wardId = "Required";
     if (!form.admissionType) errs.admissionType = "Required";
-    if (!form.admissionDate) errs.admissionDate = "Required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -240,25 +233,16 @@ function PatientFormModal({ open, onClose, wards, existing, onSave }: PatientFor
             placeholder="e.g. 4"
           />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Select
-            label="Admission Type *"
-            value={form.admissionType}
-            onChange={(e) => set("admissionType", e.target.value)}
-            options={[
-              { value: "EMERGENCY", label: "Emergency" },
-              { value: "ELECTIVE", label: "Elective" },
-              { value: "TRANSFER", label: "Transfer" },
-            ]}
-          />
-          <Input
-            label="Admission Date *"
-            type="datetime-local"
-            value={form.admissionDate}
-            onChange={(e) => set("admissionDate", e.target.value)}
-            error={errors.admissionDate}
-          />
-        </div>
+        <Select
+          label="Admission Type *"
+          value={form.admissionType}
+          onChange={(e) => set("admissionType", e.target.value)}
+          options={[
+            { value: "EMERGENCY", label: "Emergency" },
+            { value: "ELECTIVE", label: "Elective" },
+            { value: "TRANSFER", label: "Transfer" },
+          ]}
+        />
 
         <SectionHeading>Emergency Contact</SectionHeading>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -387,8 +371,8 @@ export default function AdminPatients() {
   const [registerPatient] = useRegisterPatientMutation();
   const [updatePatientStatus] = useUpdatePatientStatusMutation();
 
-  const patients = patientsData ?? MOCK_PATIENTS;
-  const wards = wardsData ?? MOCK_WARDS;
+  const patients = patientsData ?? [];
+  const wards = wardsData ?? [];
 
   const [registerOpen, setRegisterOpen] = useState(false);
   const [viewTarget, setViewTarget] = useState<Patient | null>(null);

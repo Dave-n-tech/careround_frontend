@@ -1,50 +1,66 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAppSelector } from "@/app/hooks";
+
+// ─── AI voice note API call ───────────────────────────────────────────────────
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
+
+async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | null> {
+  const token = localStorage.getItem("cr_access_token");
+  const ext = audioBlob.type.includes("ogg") ? "ogg"
+    : audioBlob.type.includes("mp4") || audioBlob.type.includes("m4a") ? "m4a"
+    : audioBlob.type.includes("wav") ? "wav"
+    : "webm";
+  const formData = new FormData();
+  formData.append("audio", audioBlob, `recording.${ext}`);
+  try {
+    const res = await fetch(`${apiBaseUrl}/ai/process-voice-note`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok || !res.body) return null;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const raw = line.slice(5).trim();
+        if (!raw || raw === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(raw);
+          const payload = parsed?.data ?? parsed;
+          if (payload?.rawTranscription !== undefined && payload?.clinicalNote !== undefined) {
+            return payload as AiProcessingResult;
+          }
+        } catch { /* non-JSON line */ }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 import { Pause, Play, Square, Plus, Trash2, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { useGetPatientQuery } from "@/services/api/patients";
-import { useConfirmNoteMutation } from "@/services/api/clinicalNotes";
-import { MOCK_PATIENTS } from "@/lib/mock-data";
-import type { AiProcessingResult, AiPrescription, SoapContent } from "@/types/domain";
+import { useAddNoteMutation, useConfirmNoteMutation } from "@/services/api/clinicalNotes";
+import type { AiProcessingResult, AiPrescription, NoteType, SoapContent } from "@/types/domain";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 
-// ─── Mock AI result ───────────────────────────────────────────────────────────
-
-const MOCK_AI_RESULT: AiProcessingResult = {
-  rawTranscription:
-    "Patient presenting today with continued shortness of breath, though she says it's slightly improved since yesterday. She's been on the diuretics for two days now. She's still not comfortable lying flat. I examined her this morning — blood pressure is 106 over 68, heart rate 96, respiratory rate still elevated at 22. Bibasal crackles on auscultation, slightly reduced compared to yesterday. JVP still elevated. I'm going to continue the current diuretic regimen. I'll add bisoprolol at a low dose starting tonight given the stabilising haemodynamics. I'd like repeat echo in three days.",
-  clinicalNote: {
-    subjective:
-      "Patient reports continued shortness of breath with slight improvement since yesterday. Still unable to lie flat. No chest pain. Tolerating oral medications.",
-    objective:
-      "BP 106/68, HR 96, RR 22, SpO₂ 95%. Bibasal crackles slightly reduced compared to yesterday. JVP still elevated at 3cm. Pitting oedema to mid-shin. Weight down 1.2kg since admission.",
-    assessment:
-      "Acute decompensated heart failure — partial response to IV diuresis. Haemodynamics gradually stabilising. Underlying LV dysfunction (EF 30%) confirmed on echo.",
-    plan:
-      "Continue IV furosemide 40mg BD. Commence bisoprolol 1.25mg OD tonight — titrate as tolerated. Repeat echo in 3 days. Consider introducing ramipril once systolic BP consistently > 110. Continue fluid restriction 1.5L/day. Cardiology outpatient follow-up to be arranged.",
-  },
-  prescriptions: [
-    (() => {
-      const times = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date();
-        d.setHours(21, 0, 0, 0);
-        d.setDate(d.getDate() + i);
-        return d.toISOString();
-      });
-      return {
-        drugName: "Bisoprolol",
-        dose: "1.25mg",
-        route: "Oral",
-        frequencyString: "Once daily",
-        frequencyHours: 24,
-        totalDoses: 7,
-        startTime: times[0],
-        administrationTimes: times,
-      };
-    })(),
-  ],
+const BLANK_AI_RESULT: AiProcessingResult = {
+  rawTranscription: "",
+  clinicalNote: { subjective: "", objective: "", assessment: "", plan: "" },
+  prescriptions: [],
 };
 
 // ─── Screen 1 — Recording ─────────────────────────────────────────────────────
@@ -83,7 +99,7 @@ function Waveform({ active }: { active: boolean }) {
 interface Screen1Props {
   patientName: string;
   bedNumber?: string;
-  onStop: () => void;
+  onStop: (blob: Blob) => void;
   onCancel: () => void;
 }
 
@@ -92,13 +108,15 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
   const [paused, setPaused] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const mediaRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
       const mr = new MediaRecorder(stream);
       mediaRef.current = mr;
-      mr.start();
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.start(1000);
     }).catch(() => {
       // Microphone permission denied — still allow the flow to continue
     });
@@ -128,9 +146,17 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
   }
 
   function handleStop() {
-    if (mediaRef.current?.state !== "inactive") mediaRef.current?.stop();
     if (timerRef.current) clearInterval(timerRef.current);
-    onStop();
+    const mr = mediaRef.current;
+    if (mr && mr.state !== "inactive") {
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        onStop(blob);
+      };
+      mr.stop();
+    } else {
+      onStop(new Blob([], { type: "audio/webm" }));
+    }
   }
 
   return (
@@ -210,10 +236,11 @@ interface Screen2Props {
   patientName: string;
   bedNumber?: string;
   isNurse: boolean;
+  audioBlob: Blob;
   onDone: (result: AiProcessingResult) => void;
 }
 
-function ProcessingScreen({ patientName, bedNumber, isNurse, onDone }: Screen2Props) {
+function ProcessingScreen({ patientName, bedNumber, isNurse, audioBlob, onDone }: Screen2Props) {
   const doctorSteps = ["Transcribing", "Structuring note", "Extracting prescriptions"];
   const nurseSteps = ["Transcribing your note"];
   const stepLabels = isNurse ? nurseSteps : doctorSteps;
@@ -221,11 +248,27 @@ function ProcessingScreen({ patientName, bedNumber, isNurse, onDone }: Screen2Pr
   const [currentStep, setCurrentStep] = useState(0);
 
   useEffect(() => {
+    let animDone = false;
+    let apiResult: AiProcessingResult | null = null;
+
+    function tryComplete() {
+      if (animDone && apiResult !== null) onDone(apiResult);
+    }
+
     const timeouts: ReturnType<typeof setTimeout>[] = [];
     stepLabels.forEach((_, i) => {
       timeouts.push(setTimeout(() => setCurrentStep(i + 1), (i + 1) * 1200));
     });
-    timeouts.push(setTimeout(() => onDone(MOCK_AI_RESULT), (stepLabels.length + 1) * 1200));
+    timeouts.push(setTimeout(() => {
+      animDone = true;
+      tryComplete();
+    }, (stepLabels.length + 1) * 1200));
+
+    processVoiceNote(audioBlob).then((result) => {
+      apiResult = result ?? BLANK_AI_RESULT;
+      tryComplete();
+    });
+
     return () => timeouts.forEach(clearTimeout);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -278,7 +321,85 @@ function ProcessingScreen({ patientName, bedNumber, isNurse, onDone }: Screen2Pr
   );
 }
 
-// ─── Screen 3 — Review ────────────────────────────────────────────────────────
+// ─── Screen 3a — Nurse Review ────────────────────────────────────────────────
+
+const NURSE_NOTE_TYPES = [
+  { value: "HANDOVER_NOTE", label: "Handover Note" },
+  { value: "NURSING_REPORT", label: "Nursing Report" },
+];
+
+interface NurseScreen3Props {
+  patientName: string;
+  bedNumber?: string;
+  result: AiProcessingResult;
+  patientId: string;
+  onSaved: () => void;
+}
+
+function NurseReviewScreen({ patientName, bedNumber, result, patientId, onSaved }: NurseScreen3Props) {
+  const [addNote] = useAddNoteMutation();
+  const [noteType, setNoteType] = useState<NoteType>("HANDOVER_NOTE");
+  const [content, setContent] = useState(result.rawTranscription);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!content.trim()) return;
+    setSaving(true);
+    try {
+      await addNote({ patientId, noteType, content, isAiGenerated: true, rawTranscription: result.rawTranscription }).unwrap();
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-white flex flex-col">
+      <div className="sticky top-0 bg-white border-b border-[var(--cr-line)] px-6 py-3 z-10">
+        <p className="text-sm font-semibold text-[var(--cr-ink)]">{patientName}</p>
+        {bedNumber && <p className="text-xs text-[var(--cr-muted)]">Bed {bedNumber}</p>}
+      </div>
+
+      <div className="flex-1 px-6 py-5 flex flex-col gap-5 max-w-3xl mx-auto w-full pb-28">
+        <div>
+          <h3 className="text-sm font-bold text-[var(--cr-ink)] mb-3">Note Type</h3>
+          <Select
+            label=""
+            value={noteType}
+            onChange={(e) => setNoteType(e.target.value as NoteType)}
+            options={NURSE_NOTE_TYPES}
+          />
+        </div>
+
+        <div>
+          <h3 className="text-sm font-bold text-[var(--cr-ink)] mb-2">Transcription</h3>
+          <p className="text-xs text-[var(--cr-muted)] mb-3">Review and edit before saving.</p>
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            className="w-full border border-[var(--cr-line)] rounded-lg p-3 text-sm text-[var(--cr-ink)] resize-none focus:outline-none focus:border-[var(--cr-accent)]"
+            rows={12}
+          />
+        </div>
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--cr-line)] px-6 py-4">
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={handleSave}
+          loading={saving}
+          disabled={!content.trim()}
+          className="w-full max-w-3xl mx-auto block"
+        >
+          Save Note
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Screen 3b — Doctor Review ────────────────────────────────────────────────
 
 function SoapEditor({ soap, onChange }: {
   soap: SoapContent;
@@ -530,8 +651,9 @@ export default function RecordingFlow() {
   const role = useAppSelector((s) => s.auth.role);
   const { data: patientData } = useGetPatientQuery(id ?? "");
 
-  const patient = patientData ?? MOCK_PATIENTS.find((p) => p.id === id);
+  const patient = patientData;
   const [screen, setScreen] = useState<FlowScreen>("recording");
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [aiResult, setAiResult] = useState<AiProcessingResult | null>(null);
 
   const isNurse = role === "NURSE";
@@ -547,19 +669,29 @@ export default function RecordingFlow() {
         <RecordingScreen
           patientName={patientName}
           bedNumber={patient.bedNumber}
-          onStop={() => setScreen("processing")}
+          onStop={(blob) => { setAudioBlob(blob); setScreen("processing"); }}
           onCancel={() => navigate(backPath)}
         />
       )}
-      {screen === "processing" && (
+      {screen === "processing" && audioBlob && (
         <ProcessingScreen
           patientName={patientName}
           bedNumber={patient.bedNumber}
           isNurse={isNurse}
+          audioBlob={audioBlob}
           onDone={(result) => { setAiResult(result); setScreen("review"); }}
         />
       )}
-      {screen === "review" && aiResult && (
+      {screen === "review" && aiResult && isNurse && (
+        <NurseReviewScreen
+          patientName={patientName}
+          bedNumber={patient.bedNumber}
+          result={aiResult}
+          patientId={patient.id}
+          onSaved={() => navigate(backPath)}
+        />
+      )}
+      {screen === "review" && aiResult && !isNurse && (
         <ReviewScreen
           patientName={patientName}
           bedNumber={patient.bedNumber}

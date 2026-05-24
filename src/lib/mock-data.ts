@@ -50,7 +50,6 @@ export const MOCK_USERS: User[] = [
     role: "DOCTOR",
     active: true,
     createdAt: "2025-01-15T09:00:00Z",
-    updatedAt: "2025-01-15T09:00:00Z",
   },
   {
     id: "u2",
@@ -61,7 +60,6 @@ export const MOCK_USERS: User[] = [
     role: "DOCTOR",
     active: true,
     createdAt: "2025-01-20T09:00:00Z",
-    updatedAt: "2025-01-20T09:00:00Z",
   },
   {
     id: "u3",
@@ -72,7 +70,6 @@ export const MOCK_USERS: User[] = [
     role: "NURSE",
     active: true,
     createdAt: "2025-02-01T09:00:00Z",
-    updatedAt: "2025-02-01T09:00:00Z",
   },
   {
     id: "u4",
@@ -83,7 +80,6 @@ export const MOCK_USERS: User[] = [
     role: "NURSE",
     active: true,
     createdAt: "2025-02-01T09:00:00Z",
-    updatedAt: "2025-02-01T09:00:00Z",
   },
   {
     id: "u5",
@@ -94,7 +90,6 @@ export const MOCK_USERS: User[] = [
     role: "NURSE",
     active: false,
     createdAt: "2025-02-10T09:00:00Z",
-    updatedAt: "2025-04-15T09:00:00Z",
   },
   {
     id: "u6",
@@ -105,7 +100,6 @@ export const MOCK_USERS: User[] = [
     role: "SUPERVISOR",
     active: true,
     createdAt: "2025-01-10T09:00:00Z",
-    updatedAt: "2025-01-10T09:00:00Z",
   },
 ];
 

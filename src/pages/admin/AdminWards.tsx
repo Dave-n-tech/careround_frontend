@@ -5,7 +5,6 @@ import {
   useCreateWardMutation,
   useUpdateWardMutation,
 } from "@/services/api/wards";
-import { MOCK_WARDS } from "@/lib/mock-data";
 import type { Ward } from "@/types/domain";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,7 +120,7 @@ export default function AdminWards() {
   const [createWard] = useCreateWardMutation();
   const [updateWard] = useUpdateWardMutation();
 
-  const wards = wardsData ?? MOCK_WARDS;
+  const wards = wardsData ?? [];
 
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Ward | null>(null);

@@ -1,7 +1,56 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Mic, Plus, AlertTriangle, ChevronLeft, Pause, Play, Square, X } from "lucide-react";
-import { useAppSelector } from "@/app/hooks";
+import { useAppSelector, useAppDispatch } from "@/app/hooks";
+import { clinicalNotesApi } from "@/services/api/clinicalNotes";
+import type { AiProcessingResult } from "@/types/domain";
+
+// ─── AI voice note API call ───────────────────────────────────────────────────
+
+const aiApiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
+
+async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | null> {
+  const token = localStorage.getItem("cr_access_token");
+  const ext = audioBlob.type.includes("ogg") ? "ogg"
+    : audioBlob.type.includes("mp4") || audioBlob.type.includes("m4a") ? "m4a"
+    : audioBlob.type.includes("wav") ? "wav"
+    : "webm";
+  const formData = new FormData();
+  formData.append("audio", audioBlob, `recording.${ext}`);
+  try {
+    const res = await fetch(`${aiApiBaseUrl}/ai/process-voice-note`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok || !res.body) return null;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const raw = line.slice(5).trim();
+        if (!raw || raw === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(raw);
+          const payload = parsed?.data ?? parsed;
+          if (payload?.rawTranscription !== undefined && payload?.clinicalNote !== undefined) {
+            return payload as AiProcessingResult;
+          }
+        } catch { /* non-JSON */ }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 import { useGetPatientQuery } from "@/services/api/patients";
 import { useGetPatientVitalsQuery, useRecordVitalsMutation } from "@/services/api/vitals";
 import { useGetPatientNotesQuery, useAddNoteMutation, useConfirmNoteMutation } from "@/services/api/clinicalNotes";
@@ -12,9 +61,6 @@ import {
   useUpdatePrescriptionMutation,
   useDiscontinuePrescriptionMutation,
 } from "@/services/api/prescriptions";
-import {
-  MOCK_PATIENTS, MOCK_VITALS, MOCK_NOTES, MOCK_PRESCRIPTIONS,
-} from "@/lib/mock-data";
 import type { NoteType, SoapContent, AdministrationSlot } from "@/types/domain";
 import type { MedicationChartResponse, PrescriptionEnriched, PatientVitalsEnriched } from "@/services/api";
 import { Button } from "@/components/ui/button";
@@ -85,17 +131,7 @@ const NOTE_BADGE_COLORS: Record<NoteType, string> = {
   NURSING_REPORT: "bg-amber-100 text-amber-700",
 };
 
-// Mock AI result used after processing simulation
-const MOCK_AI_SOAP: SoapContent = {
-  subjective:
-    "Patient reports continued shortness of breath with slight improvement since yesterday. Still unable to lie flat. No chest pain. Tolerating oral medications.",
-  objective:
-    "BP 106/68, HR 96, RR 22, SpO₂ 95%. Bibasal crackles slightly reduced. JVP still elevated. Weight down 1.2kg since admission.",
-  assessment:
-    "Acute decompensated heart failure — partial response to IV diuresis. Haemodynamics gradually stabilising.",
-  plan:
-    "Continue IV furosemide 40mg BD. Commence bisoprolol 1.25mg OD tonight. Repeat echo in 3 days. Continue fluid restriction 1.5L/day.",
-};
+const EMPTY_SOAP: SoapContent = { subjective: "", objective: "", assessment: "", plan: "" };
 
 // ─── Waveform animation ───────────────────────────────────────────────────────
 
@@ -146,6 +182,8 @@ function RecordingCard({ patientName, bedNumber, isNurse, onCancel, onDone }: Re
   const [paused, setPaused] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const mediaRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const audioBlobRef = useRef<Blob | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stepLabels = isNurse ? NURSE_STEPS : DOCTOR_STEPS;
@@ -156,7 +194,8 @@ function RecordingCard({ patientName, bedNumber, isNurse, onCancel, onDone }: Re
       .then((stream) => {
         const mr = new MediaRecorder(stream);
         mediaRef.current = mr;
-        mr.start();
+        mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+        mr.start(1000);
       })
       .catch(() => { /* permission denied — still show UI */ });
 
@@ -170,18 +209,34 @@ function RecordingCard({ patientName, bedNumber, isNurse, onCancel, onDone }: Re
     };
   }, []);
 
-  // Run processing steps when phase transitions
+  // Run processing steps + real API call when phase transitions
   useEffect(() => {
     if (phase !== "processing") return;
+
+    let animDone = false;
+    let noteText: string | null = null;
+
+    function tryComplete() {
+      if (animDone && noteText !== null) onDone(noteText);
+    }
+
     const timeouts: ReturnType<typeof setTimeout>[] = [];
     stepLabels.forEach((_, i) => {
       timeouts.push(setTimeout(() => setCurrentStep(i + 1), (i + 1) * 1200));
     });
-    timeouts.push(
-      setTimeout(() => {
-        onDone(isNurse ? "" : soapToNoteText(MOCK_AI_SOAP));
-      }, (stepLabels.length + 1) * 1200)
-    );
+    timeouts.push(setTimeout(() => {
+      animDone = true;
+      tryComplete();
+    }, (stepLabels.length + 1) * 1200));
+
+    const blob = audioBlobRef.current ?? new Blob([], { type: "audio/webm" });
+    processVoiceNote(blob).then((result) => {
+      noteText = result
+        ? (isNurse ? result.rawTranscription : soapToNoteText(result.clinicalNote))
+        : (isNurse ? "" : soapToNoteText(EMPTY_SOAP));
+      tryComplete();
+    });
+
     return () => timeouts.forEach(clearTimeout);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
@@ -193,10 +248,20 @@ function RecordingCard({ patientName, bedNumber, isNurse, onCancel, onDone }: Re
   }
 
   function handleStop() {
-    if (mediaRef.current?.state !== "inactive") mediaRef.current?.stop();
     if (timerRef.current) clearInterval(timerRef.current);
-    setPhase("processing");
-    setCurrentStep(0);
+    const mr = mediaRef.current;
+    if (mr && mr.state !== "inactive") {
+      mr.onstop = () => {
+        audioBlobRef.current = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        setPhase("processing");
+        setCurrentStep(0);
+      };
+      mr.stop();
+    } else {
+      audioBlobRef.current = new Blob([], { type: "audio/webm" });
+      setPhase("processing");
+      setCurrentStep(0);
+    }
   }
 
   return (
@@ -328,10 +393,10 @@ function OverviewTab({ patientId }: { patientId: string }) {
   const { data: rxData } = useGetPatientPrescriptionsQuery(patientId);
   const { data: patientData } = useGetPatientQuery(patientId);
 
-  const patient = patientData ?? MOCK_PATIENTS.find((p) => p.id === patientId);
-  const vitals = vitalsData ?? MOCK_VITALS[patientId] ?? [];
-  const notes = notesData ?? MOCK_NOTES[patientId] ?? [];
-  const prescriptions = rxData ?? MOCK_PRESCRIPTIONS[patientId] ?? [];
+  const patient = patientData;
+  const vitals = vitalsData ?? [];
+  const notes = notesData ?? [];
+  const prescriptions = rxData ?? [];
 
   const latest = vitals[0];
   const latestNote = notes[notes.length - 1];
@@ -462,7 +527,7 @@ function NotesTab({
   onDismissPrescriptionNotice: () => void;
 }) {
   const { data: notesData } = useGetPatientNotesQuery(patientId);
-  const notes = notesData ?? MOCK_NOTES[patientId] ?? [];
+  const notes = notesData ?? [];
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -728,27 +793,7 @@ function MedicationsTab({ patientId, canWrite }: { patientId: string; canWrite: 
 
   // Use chart data (enriched with administrationSlots) when available; fall back to mock prescriptions
   // shaped as chart entries for the MAR table
-  const mockCharts: MedicationChartResponse[] = (MOCK_PRESCRIPTIONS[patientId] ?? []).map((rx) => ({
-    id: rx.id,
-    patientId,
-    hospitalId: rx.hospitalId,
-    prescriptionId: rx.id,
-    status: rx.status,
-    createdAt: rx.createdAt,
-    updatedAt: rx.updatedAt,
-    drugName: rx.drugName,
-    dose: rx.dose,
-    route: rx.route,
-    frequencyString: rx.frequencyString,
-    frequencyHours: rx.frequencyHours,
-    totalDoses: rx.totalDoses,
-    startTime: rx.startTime,
-    confirmedById: rx.confirmedById,
-    confirmedByName: rx.confirmedByName,
-    administrationSlots: rx.administrationTimes.map((t) => ({ scheduledTime: t })),
-  }));
-
-  const charts = chartData ?? mockCharts;
+  const charts = chartData ?? [];
 
   const [addMedOpen, setAddMedOpen] = useState(false);
   const [editRx, setEditRx] = useState<MedicationChartResponse | null>(null);
@@ -923,7 +968,7 @@ type VitalsRange = "24h" | "48h" | "7d" | "all";
 function VitalsTab({ patientId, canWrite }: { patientId: string; canWrite: boolean }) {
   const { data: vitalsData } = useGetPatientVitalsQuery(patientId);
   const [recordVitals] = useRecordVitalsMutation();
-  const vitals = (vitalsData ?? MOCK_VITALS[patientId] ?? []) as PatientVitalsEnriched[];
+  const vitals = (vitalsData ?? []) as PatientVitalsEnriched[];
   const [range, setRange] = useState<VitalsRange>("48h");
   const [recordOpen, setRecordOpen] = useState(false);
   const [vForm, setVForm] = useState({ pulse: "", systolicBp: "", diastolicBp: "", respiratoryRate: "", temperature: "", spo2: "" });
@@ -1090,11 +1135,13 @@ export default function PatientDetail() {
   const [addNote] = useAddNoteMutation();
   const [confirmNote] = useConfirmNoteMutation();
 
+  const user = useAppSelector((s) => s.auth.user);
+  const dispatch = useAppDispatch();
   const canWrite = role === "DOCTOR" || role === "NURSE";
   const isNurse = role === "NURSE";
   const noteTypes = isNurse ? NURSE_NOTE_TYPES : DOCTOR_NOTE_TYPES;
 
-  const patient = patientData ?? MOCK_PATIENTS.find((p) => p.id === id);
+  const patient = patientData;
   const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   // Recording + Add Note modal state — lifted here so tab switches don't interrupt recording
@@ -1118,22 +1165,46 @@ export default function PatientDetail() {
 
   async function handleSaveNote() {
     if (!noteContent.trim() || !patient) return;
+
+    if (noteType === "WARD_ROUND_NOTE" && !isNurse) {
+      // Immediately write note into the cache so it appears at once
+      dispatch(
+        clinicalNotesApi.util.updateQueryData("getPatientNotes", patient.id, (draft) => {
+          draft.push({
+            id: `optimistic-${Date.now()}`,
+            patientId: patient.id,
+            hospitalId: user?.hospitalId ?? "",
+            authorId: user?.id ?? "",
+            noteType: "WARD_ROUND_NOTE",
+            content: noteContent,
+            isAiGenerated: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            authorName: user ? `${user.firstName} ${user.lastName}` : "You",
+            authorRole: "DOCTOR",
+          });
+        })
+      );
+
+      // Fire and forget — AI prescription extraction runs in the background
+      confirmNote({
+        patientId: patient.id,
+        noteType: "WARD_ROUND_NOTE",
+        content: noteContent,
+        isAiGenerated: false,
+        extractPrescriptionsFromAi: true,
+        prescriptions: [],
+      });
+
+      setPrescriptionProcessingNotice(true);
+      setNoteContent("");
+      setAddOpen(false);
+      return;
+    }
+
     setSaving(true);
     try {
-      if (noteType === "WARD_ROUND_NOTE" && !isNurse) {
-        // Manual ward round note — send to AI for prescription extraction (fire-and-forget)
-        await confirmNote({
-          patientId: patient.id,
-          noteType: "WARD_ROUND_NOTE",
-          content: noteContent,
-          isAiGenerated: false,
-          extractPrescriptionsFromAi: true,
-          prescriptions: [],
-        }).unwrap();
-        setPrescriptionProcessingNotice(true);
-      } else {
-        await addNote({ patientId: patient.id, noteType, content: noteContent }).unwrap();
-      }
+      await addNote({ patientId: patient.id, noteType, content: noteContent }).unwrap();
       setNoteContent("");
       setAddOpen(false);
     } finally {

@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useGetSystemConfigQuery, useUpdateSystemConfigMutation } from "@/services/api/hospital";
-import { MOCK_SYSTEM_CONFIG } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -8,18 +7,19 @@ export default function AdminSettings() {
   const { data: configData } = useGetSystemConfigQuery();
   const [updateConfig] = useUpdateSystemConfigMutation();
 
-  const config = configData ?? MOCK_SYSTEM_CONFIG;
-
-  const [reminderMinutes, setReminderMinutes] = useState(String(config.taskOverdueReminderMinutes));
-  const [escalationMinutes, setEscalationMinutes] = useState(String(config.taskEscalationMinutes));
+  const [reminderMinutes, setReminderMinutes] = useState("");
+  const [escalationMinutes, setEscalationMinutes] = useState("");
+  const [pushEnabled, setPushEnabled] = useState(true);
   const [errors, setErrors] = useState<{ reminder?: string; escalation?: string }>({});
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setReminderMinutes(String(config.taskOverdueReminderMinutes));
-    setEscalationMinutes(String(config.taskEscalationMinutes));
-  }, [config.taskOverdueReminderMinutes, config.taskEscalationMinutes]);
+    if (!configData) return;
+    setReminderMinutes(String(configData.taskOverdueReminderMinutes));
+    setEscalationMinutes(String(configData.taskEscalationMinutes));
+    setPushEnabled(configData.pushNotificationsEnabled);
+  }, [configData]);
 
   function validate(): boolean {
     const errs: typeof errors = {};
@@ -42,6 +42,7 @@ export default function AdminSettings() {
       await updateConfig({
         taskOverdueReminderMinutes: Number(reminderMinutes),
         taskEscalationMinutes: Number(escalationMinutes),
+        pushNotificationsEnabled: pushEnabled,
       }).unwrap();
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -93,6 +94,32 @@ export default function AdminSettings() {
               error={errors.escalation}
               hint="Tasks overdue by this many minutes appear highlighted in the supervisor's overdue alert panel"
             />
+          </div>
+
+          <div className="px-5 py-5 border-t border-[var(--cr-line)]">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-[var(--cr-ink)]">Push Notifications</p>
+                <p className="text-xs text-[var(--cr-muted)] mt-0.5">
+                  Send push notifications to nurses for overdue task reminders
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={pushEnabled}
+                onClick={() => { setPushEnabled((v) => !v); setSaved(false); }}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${
+                  pushEnabled ? "bg-[var(--cr-accent)]" : "bg-[var(--cr-line)]"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${
+                    pushEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
           </div>
 
           <div className="px-5 py-4 border-t border-[var(--cr-line)] flex items-center justify-between">

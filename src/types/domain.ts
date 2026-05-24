@@ -69,7 +69,6 @@ export interface User {
   active: boolean;
   fcmToken?: string;
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface Patient {

@@ -3,7 +3,6 @@ import { ChevronDown, ChevronRight, Clock, AlertTriangle, CheckCircle2 } from "l
 import { useGetMedicationTasksQuery, useCompleteTaskMutation } from "@/services/api/prescriptions";
 import { useAppSelector } from "@/app/hooks";
 import { ConfirmModal } from "@/components/ui/modal";
-import { MOCK_TASKS } from "@/lib/mock-data";
 import type { MedicationTaskEnriched } from "@/services/api/prescriptions";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -185,12 +184,11 @@ export default function NurseTasks() {
   const wardId = useAppSelector((s) => s.auth.user?.wardId);
   const { data: tasksData } = useGetMedicationTasksQuery({ wardId });
 
-  // API returns pre-grouped tasks; fall back to mock data grouped client-side
   const grouped: Record<Group, MedicationTaskEnriched[]> = {
-    OVERDUE:   tasksData?.overdue   ?? MOCK_TASKS.filter((t) => groupTask(t) === "OVERDUE"),
-    DUE_SOON:  tasksData?.dueSoon   ?? MOCK_TASKS.filter((t) => groupTask(t) === "DUE_SOON"),
-    UPCOMING:  tasksData?.upcoming  ?? MOCK_TASKS.filter((t) => groupTask(t) === "UPCOMING"),
-    COMPLETED: tasksData ? [] : MOCK_TASKS.filter((t) => groupTask(t) === "COMPLETED"),
+    OVERDUE:   tasksData?.overdue  ?? [],
+    DUE_SOON:  tasksData?.dueSoon  ?? [],
+    UPCOMING:  tasksData?.upcoming ?? [],
+    COMPLETED: tasksData?.completed ?? [],
   };
 
   const pendingCount = grouped.OVERDUE.length + grouped.DUE_SOON.length;

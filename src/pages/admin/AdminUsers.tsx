@@ -7,7 +7,6 @@ import {
   useDeactivateUserMutation,
   useReactivateUserMutation,
 } from "@/services/api/users";
-import { MOCK_USERS } from "@/lib/mock-data";
 import type { Role, User } from "@/types/domain";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -159,7 +158,7 @@ export default function AdminUsers() {
   const [deactivateUser] = useDeactivateUserMutation();
   const [reactivateUser] = useReactivateUserMutation();
 
-  const allUsers = usersData ?? MOCK_USERS;
+  const allUsers = usersData ?? [];
 
   const [tab, setTab] = useState<TabFilter>("ALL");
   const [addOpen, setAddOpen] = useState(false);

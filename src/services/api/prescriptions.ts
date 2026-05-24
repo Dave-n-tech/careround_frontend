@@ -62,6 +62,7 @@ export interface TaskListResponse {
   overdue: MedicationTaskEnriched[];
   dueSoon: MedicationTaskEnriched[];
   upcoming: MedicationTaskEnriched[];
+  completed: MedicationTaskEnriched[];
 }
 
 // Request for POST /medication-charts/{patientId}/manual

@@ -1,7 +1,6 @@
 import { useGetWardsQuery } from "@/services/api/wards";
 import { useGetUsersQuery } from "@/services/api/users";
 import { useGetAllPatientsQuery } from "@/services/api/patients";
-import { MOCK_WARDS, MOCK_USERS, MOCK_PATIENTS } from "@/lib/mock-data";
 import { StatCard } from "@/components/ui/stat-card";
 import { AcuityBadge } from "@/components/ui/badge";
 import { formatDateTime, ageFromDob } from "@/utils/format";
@@ -11,9 +10,9 @@ export default function AdminDashboard() {
   const { data: users } = useGetUsersQuery();
   const { data: patients } = useGetAllPatientsQuery();
 
-  const wardList = wards ?? MOCK_WARDS;
-  const userList = users ?? MOCK_USERS;
-  const patientList = patients ?? MOCK_PATIENTS;
+  const wardList = wards ?? [];
+  const userList = users ?? [];
+  const patientList = patients ?? [];
 
   const totalWards = wardList.filter((w) => w.isActive).length;
   const totalDoctors = userList.filter((u) => u.role === "DOCTOR" && u.active).length;

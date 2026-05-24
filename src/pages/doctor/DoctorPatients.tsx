@@ -1,11 +1,10 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Pill } from "lucide-react";
-import { useGetPatientsQuery } from "@/services/api/patients";
+import { useGetAllPatientsQuery } from "@/services/api/patients";
 import { useGetPatientVitalsQuery } from "@/services/api/vitals";
 import { useGetPatientNotesQuery } from "@/services/api/clinicalNotes";
 import { useGetPatientPrescriptionsQuery } from "@/services/api/prescriptions";
-import { MOCK_PATIENTS, MOCK_VITALS, MOCK_NOTES, MOCK_PRESCRIPTIONS } from "@/lib/mock-data";
 import type { AcuityColor, Patient } from "@/types/domain";
 import { AcuityStrip, VhiBadge } from "@/components/ui/badge";
 import { timeAgo } from "@/utils/format";
@@ -17,9 +16,9 @@ function PatientCard({ patient, onClick }: { patient: Patient; onClick: () => vo
   const { data: notesData } = useGetPatientNotesQuery(patient.id);
   const { data: rxData } = useGetPatientPrescriptionsQuery(patient.id);
 
-  const vitals = vitalsData ?? MOCK_VITALS[patient.id] ?? [];
-  const notes = notesData ?? MOCK_NOTES[patient.id] ?? [];
-  const prescriptions = rxData ?? MOCK_PRESCRIPTIONS[patient.id] ?? [];
+  const vitals = vitalsData ?? [];
+  const notes = notesData ?? [];
+  const prescriptions = rxData ?? [];
 
   const latestVitals = vitals[0];
   const latestNote = notes[notes.length - 1];
@@ -124,8 +123,8 @@ function acuityOrder(c: AcuityColor): number {
 
 export default function DoctorPatients() {
   const navigate = useNavigate();
-  const { data: patientsData } = useGetPatientsQuery({});
-  const allPatients = (patientsData ?? MOCK_PATIENTS).filter((p) => p.status === "ADMITTED");
+  const { data: patientsData } = useGetAllPatientsQuery({ status: "ADMITTED" });
+  const allPatients = patientsData ?? [];
 
   const [acuityFilter, setAcuityFilter] = useState<AcuityFilter>("ALL");
   const [search, setSearch] = useState("");

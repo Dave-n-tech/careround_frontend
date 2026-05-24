@@ -5,7 +5,6 @@ import { useAppSelector } from "@/app/hooks";
 import { useGetPatientsQuery } from "@/services/api/patients";
 import { useGetPatientVitalsQuery } from "@/services/api/vitals";
 import { useGetPatientPrescriptionsQuery } from "@/services/api/prescriptions";
-import { MOCK_PATIENTS, MOCK_VITALS, MOCK_PRESCRIPTIONS } from "@/lib/mock-data";
 import type { AcuityColor, Patient, Role } from "@/types/domain";
 import { AcuityStrip, VhiBadge } from "@/components/ui/badge";
 import { timeAgo } from "@/utils/format";
@@ -23,8 +22,8 @@ function PatientCard({ patient, onClick }: { patient: Patient; onClick: () => vo
   const { data: vitalsData } = useGetPatientVitalsQuery(patient.id);
   const { data: rxData } = useGetPatientPrescriptionsQuery(patient.id);
 
-  const vitals = vitalsData ?? MOCK_VITALS[patient.id] ?? [];
-  const prescriptions = rxData ?? MOCK_PRESCRIPTIONS[patient.id] ?? [];
+  const vitals = vitalsData ?? [];
+  const prescriptions = rxData ?? [];
 
   const latestVitals = vitals[0];
   const activeMedCount = prescriptions.filter((rx) => rx.status === "ACTIVE").length;
@@ -96,10 +95,11 @@ function acuityOrder(c: AcuityColor) {
 export default function PatientListPage() {
   const navigate = useNavigate();
   const role = useAppSelector((s) => s.auth.role);
+  const wardId = useAppSelector((s) => s.auth.user?.wardId);
   const prefix = (role && ROLE_PREFIX[role]) ?? "/nurse";
 
-  const { data: patientsData } = useGetPatientsQuery({});
-  const allPatients = (patientsData ?? MOCK_PATIENTS).filter((p) => p.status === "ADMITTED");
+  const { data: patientsData } = useGetPatientsQuery({ wardId });
+  const allPatients = (patientsData ?? []).filter((p) => p.status === "ADMITTED");
 
   const [acuityFilter, setAcuityFilter] = useState<AcuityFilter>("ALL");
   const [search, setSearch] = useState("");
