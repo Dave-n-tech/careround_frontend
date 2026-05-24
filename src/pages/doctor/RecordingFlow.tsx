@@ -6,16 +6,23 @@ import { useAppSelector } from "@/app/hooks";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
-async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | null> {
+async function processVoiceNote(
+  audioBlob: Blob,
+  patientId: string,
+  isNurse: boolean,
+  onTranscriptionComplete: () => void,
+): Promise<AiProcessingResult | null> {
   const token = localStorage.getItem("cr_access_token");
   const ext = audioBlob.type.includes("ogg") ? "ogg"
     : audioBlob.type.includes("mp4") || audioBlob.type.includes("m4a") ? "m4a"
     : audioBlob.type.includes("wav") ? "wav"
     : "webm";
+  if (audioBlob.size === 0) return null;
   const formData = new FormData();
   formData.append("audio", audioBlob, `recording.${ext}`);
+  const mode = isNurse ? "transcription_only" : "ward_round";
   try {
-    const res = await fetch(`${apiBaseUrl}/ai/process-voice-note`, {
+    const res = await fetch(`${apiBaseUrl}/ai/process-voice-note?patientId=${encodeURIComponent(patientId)}&mode=${mode}`, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
@@ -24,6 +31,7 @@ async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | n
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let pendingEvent = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -31,9 +39,18 @@ async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | n
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
+        if (line.startsWith("event:")) {
+          pendingEvent = line.slice(6).trim();
+          continue;
+        }
         if (!line.startsWith("data:")) continue;
         const raw = line.slice(5).trim();
-        if (!raw || raw === "[DONE]") continue;
+        if (!raw || raw === "[DONE]") { pendingEvent = ""; continue; }
+        if (pendingEvent === "transcription_complete") {
+          onTranscriptionComplete();
+          pendingEvent = "";
+          continue;
+        }
         try {
           const parsed = JSON.parse(raw);
           const payload = parsed?.data ?? parsed;
@@ -41,6 +58,7 @@ async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | n
             return payload as AiProcessingResult;
           }
         } catch { /* non-JSON line */ }
+        pendingEvent = "";
       }
     }
     return null;
@@ -48,7 +66,7 @@ async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | n
     return null;
   }
 }
-import { Pause, Play, Square, Plus, Trash2, ChevronDown, ChevronRight, Pencil } from "lucide-react";
+import { Pause, Play, Square, Plus, Trash2, ChevronDown, ChevronRight, Pencil, MicOff } from "lucide-react";
 import { useGetPatientQuery } from "@/services/api/patients";
 import { useAddNoteMutation, useConfirmNoteMutation } from "@/services/api/clinicalNotes";
 import type { AiProcessingResult, AiPrescription, NoteType, SoapContent } from "@/types/domain";
@@ -107,18 +125,24 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
   const [seconds, setSeconds] = useState(0);
   const [paused, setPaused] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [micError, setMicError] = useState(false);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-      const mr = new MediaRecorder(stream);
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "";
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {});
       mediaRef.current = mr;
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.start(1000);
+      mr.start(100);
     }).catch(() => {
-      // Microphone permission denied — still allow the flow to continue
+      setMicError(true);
     });
 
     timerRef.current = setInterval(() => {
@@ -151,12 +175,35 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
     if (mr && mr.state !== "inactive") {
       mr.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        if (blob.size === 0) { setMicError(true); return; }
         onStop(blob);
       };
       mr.stop();
     } else {
-      onStop(new Blob([], { type: "audio/webm" }));
+      setMicError(true);
     }
+  }
+
+  if (micError) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex flex-col text-white px-6 py-6 items-center justify-center">
+        <div className="text-center max-w-xs">
+          <div className="w-14 h-14 rounded-full bg-red-900/50 flex items-center justify-center mx-auto mb-4">
+            <MicOff size={24} className="text-red-400" />
+          </div>
+          <p className="font-semibold text-lg mb-2">Microphone unavailable</p>
+          <p className="text-sm text-gray-400 mb-6">
+            Allow microphone access in your browser settings, then try again.
+          </p>
+          <button
+            className="px-6 py-3 rounded-full border border-gray-600 text-sm hover:border-gray-400 transition-colors"
+            onClick={onCancel}
+          >
+            Go back
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -230,46 +277,52 @@ function RecordingScreen({ patientName, bedNumber, onStop, onCancel }: Screen1Pr
 
 // ─── Screen 2 — Processing ────────────────────────────────────────────────────
 
-interface Step { label: string; done: boolean; active: boolean }
-
 interface Screen2Props {
   patientName: string;
   bedNumber?: string;
   isNurse: boolean;
+  patientId: string;
   audioBlob: Blob;
   onDone: (result: AiProcessingResult) => void;
 }
 
-function ProcessingScreen({ patientName, bedNumber, isNurse, audioBlob, onDone }: Screen2Props) {
+function ProcessingScreen({ patientName, bedNumber, isNurse, patientId, audioBlob, onDone }: Screen2Props) {
   const doctorSteps = ["Transcribing", "Structuring note", "Extracting prescriptions"];
   const nurseSteps = ["Transcribing your note"];
   const stepLabels = isNurse ? nurseSteps : doctorSteps;
 
   const [currentStep, setCurrentStep] = useState(0);
+  const stepRef = useRef(0);
 
   useEffect(() => {
-    let animDone = false;
-    let apiResult: AiProcessingResult | null = null;
+    let cancelled = false;
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
 
-    function tryComplete() {
-      if (animDone && apiResult !== null) onDone(apiResult);
+    function advance(to: number) {
+      stepRef.current = to;
+      if (!cancelled) setCurrentStep(to);
     }
 
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
-    stepLabels.forEach((_, i) => {
-      timeouts.push(setTimeout(() => setCurrentStep(i + 1), (i + 1) * 1200));
-    });
-    timeouts.push(setTimeout(() => {
-      animDone = true;
-      tryComplete();
-    }, (stepLabels.length + 1) * 1200));
+    function finishRemaining(result: AiProcessingResult) {
+      // Animate any remaining steps to done, then call onDone
+      const from = stepRef.current;
+      let delay = 0;
+      for (let i = from; i < stepLabels.length; i++) {
+        const s = i + 1;
+        delay += 400;
+        timeouts.push(setTimeout(() => advance(s), delay));
+      }
+      timeouts.push(setTimeout(() => { if (!cancelled) onDone(result); }, delay + 200));
+    }
 
-    processVoiceNote(audioBlob).then((result) => {
-      apiResult = result ?? BLANK_AI_RESULT;
-      tryComplete();
+    processVoiceNote(audioBlob, patientId, isNurse, () => {
+      // transcription_complete — "Transcribing" step is done
+      advance(1);
+    }).then((result) => {
+      if (!cancelled) finishRemaining(result ?? BLANK_AI_RESULT);
     });
 
-    return () => timeouts.forEach(clearTimeout);
+    return () => { cancelled = true; timeouts.forEach(clearTimeout); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -678,6 +731,7 @@ export default function RecordingFlow() {
           patientName={patientName}
           bedNumber={patient.bedNumber}
           isNurse={isNurse}
+          patientId={patient.id}
           audioBlob={audioBlob}
           onDone={(result) => { setAiResult(result); setScreen("review"); }}
         />

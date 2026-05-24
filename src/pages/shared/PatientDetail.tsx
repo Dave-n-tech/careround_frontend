@@ -9,16 +9,23 @@ import type { AiProcessingResult } from "@/types/domain";
 
 const aiApiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
-async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | null> {
+async function processVoiceNote(
+  audioBlob: Blob,
+  patientId: string,
+  isNurse: boolean,
+  onTranscriptionComplete: () => void,
+): Promise<AiProcessingResult | null> {
   const token = localStorage.getItem("cr_access_token");
   const ext = audioBlob.type.includes("ogg") ? "ogg"
     : audioBlob.type.includes("mp4") || audioBlob.type.includes("m4a") ? "m4a"
     : audioBlob.type.includes("wav") ? "wav"
     : "webm";
+  if (audioBlob.size === 0) return null;
   const formData = new FormData();
   formData.append("audio", audioBlob, `recording.${ext}`);
+  const mode = isNurse ? "transcription_only" : "ward_round";
   try {
-    const res = await fetch(`${aiApiBaseUrl}/ai/process-voice-note`, {
+    const res = await fetch(`${aiApiBaseUrl}/ai/process-voice-note?patientId=${encodeURIComponent(patientId)}&mode=${mode}`, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
@@ -27,6 +34,7 @@ async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | n
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let pendingEvent = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -34,9 +42,18 @@ async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | n
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
+        if (line.startsWith("event:")) {
+          pendingEvent = line.slice(6).trim();
+          continue;
+        }
         if (!line.startsWith("data:")) continue;
         const raw = line.slice(5).trim();
-        if (!raw || raw === "[DONE]") continue;
+        if (!raw || raw === "[DONE]") { pendingEvent = ""; continue; }
+        if (pendingEvent === "transcription_complete") {
+          onTranscriptionComplete();
+          pendingEvent = "";
+          continue;
+        }
         try {
           const parsed = JSON.parse(raw);
           const payload = parsed?.data ?? parsed;
@@ -44,6 +61,7 @@ async function processVoiceNote(audioBlob: Blob): Promise<AiProcessingResult | n
             return payload as AiProcessingResult;
           }
         } catch { /* non-JSON */ }
+        pendingEvent = "";
       }
     }
     return null;
@@ -169,6 +187,7 @@ interface RecordingCardProps {
   patientName: string;
   bedNumber?: string;
   isNurse: boolean;
+  patientId: string;
   onCancel: () => void;
   onDone: (noteText: string) => void;
 }
@@ -176,11 +195,12 @@ interface RecordingCardProps {
 const DOCTOR_STEPS = ["Transcribing", "Structuring note", "Extracting prescriptions"];
 const NURSE_STEPS = ["Transcribing your note"];
 
-function RecordingCard({ patientName, bedNumber, isNurse, onCancel, onDone }: RecordingCardProps) {
+function RecordingCard({ patientName, bedNumber, isNurse, patientId, onCancel, onDone }: RecordingCardProps) {
   const [phase, setPhase] = useState<RecordPhase>("recording");
   const [seconds, setSeconds] = useState(0);
   const [paused, setPaused] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [micError, setMicError] = useState(false);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioBlobRef = useRef<Blob | null>(null);
@@ -192,12 +212,17 @@ function RecordingCard({ patientName, bedNumber, isNurse, onCancel, onDone }: Re
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then((stream) => {
-        const mr = new MediaRecorder(stream);
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
+        const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {});
         mediaRef.current = mr;
         mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-        mr.start(1000);
+        mr.start(100);
       })
-      .catch(() => { /* permission denied — still show UI */ });
+      .catch(() => { setMicError(true); });
 
     timerRef.current = setInterval(() => {
       setPaused((p) => { if (!p) setSeconds((s) => s + 1); return p; });
@@ -209,35 +234,43 @@ function RecordingCard({ patientName, bedNumber, isNurse, onCancel, onDone }: Re
     };
   }, []);
 
-  // Run processing steps + real API call when phase transitions
+  const stepRef = useRef(0);
+
+  // Run processing steps driven by SSE events when phase transitions
   useEffect(() => {
     if (phase !== "processing") return;
 
-    let animDone = false;
-    let noteText: string | null = null;
+    let cancelled = false;
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
 
-    function tryComplete() {
-      if (animDone && noteText !== null) onDone(noteText);
+    function advance(to: number) {
+      stepRef.current = to;
+      if (!cancelled) setCurrentStep(to);
     }
 
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
-    stepLabels.forEach((_, i) => {
-      timeouts.push(setTimeout(() => setCurrentStep(i + 1), (i + 1) * 1200));
-    });
-    timeouts.push(setTimeout(() => {
-      animDone = true;
-      tryComplete();
-    }, (stepLabels.length + 1) * 1200));
+    function finishRemaining(noteText: string) {
+      const from = stepRef.current;
+      let delay = 0;
+      for (let i = from; i < stepLabels.length; i++) {
+        const s = i + 1;
+        delay += 400;
+        timeouts.push(setTimeout(() => advance(s), delay));
+      }
+      timeouts.push(setTimeout(() => { if (!cancelled) onDone(noteText); }, delay + 200));
+    }
 
     const blob = audioBlobRef.current ?? new Blob([], { type: "audio/webm" });
-    processVoiceNote(blob).then((result) => {
-      noteText = result
+    processVoiceNote(blob, patientId, isNurse, () => {
+      advance(1);
+    }).then((result) => {
+      if (cancelled) return;
+      const noteText = result
         ? (isNurse ? result.rawTranscription : soapToNoteText(result.clinicalNote))
         : (isNurse ? "" : soapToNoteText(EMPTY_SOAP));
-      tryComplete();
+      finishRemaining(noteText);
     });
 
-    return () => timeouts.forEach(clearTimeout);
+    return () => { cancelled = true; timeouts.forEach(clearTimeout); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
@@ -252,15 +285,15 @@ function RecordingCard({ patientName, bedNumber, isNurse, onCancel, onDone }: Re
     const mr = mediaRef.current;
     if (mr && mr.state !== "inactive") {
       mr.onstop = () => {
-        audioBlobRef.current = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        if (blob.size === 0) { setMicError(true); return; }
+        audioBlobRef.current = blob;
         setPhase("processing");
         setCurrentStep(0);
       };
       mr.stop();
     } else {
-      audioBlobRef.current = new Blob([], { type: "audio/webm" });
-      setPhase("processing");
-      setCurrentStep(0);
+      setMicError(true);
     }
   }
 
@@ -272,14 +305,25 @@ function RecordingCard({ patientName, bedNumber, isNurse, onCancel, onDone }: Re
           <p className="text-xs font-semibold text-[var(--cr-ink)]">{patientName}</p>
           {bedNumber && <p className="text-xs text-[var(--cr-muted)]">Bed {bedNumber}</p>}
         </div>
-        {phase === "recording" && (
+        {(phase === "recording" || micError) && (
           <button onClick={onCancel} className="text-[var(--cr-muted)] hover:text-[var(--cr-ink)]">
             <X size={15} />
           </button>
         )}
       </div>
 
-      {phase === "recording" && (
+      {micError && (
+        <div className="px-4 py-5 flex flex-col items-center gap-3 text-center">
+          <AlertTriangle size={22} className="text-red-500" />
+          <p className="text-sm font-semibold text-[var(--cr-ink)]">Microphone unavailable</p>
+          <p className="text-xs text-[var(--cr-muted)]">Allow microphone access in your browser settings, then try again.</p>
+          <button onClick={onCancel} className="text-sm text-[var(--cr-accent)] font-medium">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {!micError && phase === "recording" && (
         <div className="px-4 py-4 flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
@@ -308,7 +352,7 @@ function RecordingCard({ patientName, bedNumber, isNurse, onCancel, onDone }: Re
         </div>
       )}
 
-      {phase === "processing" && (
+      {!micError && phase === "processing" && (
         <div className="px-4 py-5 flex flex-col gap-4">
           {/* Step track */}
           <div className="flex items-center justify-center gap-2">
@@ -1310,6 +1354,7 @@ export default function PatientDetail() {
           patientName={`${patient.firstName} ${patient.lastName}`}
           bedNumber={patient.bedNumber}
           isNurse={isNurse}
+          patientId={patient.id}
           onCancel={() => setRecording(false)}
           onDone={handleRecordingDone}
         />
